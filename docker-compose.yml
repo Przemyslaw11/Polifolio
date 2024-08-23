@@ -1,0 +1,48 @@
+version: '3'
+services:
+  flask_app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.flask
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - ./backend/flask_app:/app/flask_app
+      - ./backend/shared:/app/shared
+
+  fastapi_app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.fastapi
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - ./backend/fastapi_app:/app/fastapi_app
+      - ./backend/shared:/app/shared
+      - ./.env:/app/.env
+
+  streamlit_app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.streamlit
+    ports:
+      - "8502:8502"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8502"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - ./frontend:/app
