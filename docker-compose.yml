@@ -14,6 +14,12 @@ services:
     volumes:
       - ./backend/flask_app:/app/flask_app
       - ./backend/shared:/app/shared
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB:-polifolio}
+
 
   fastapi_app:
     build:
@@ -32,6 +38,12 @@ services:
       - ./backend/fastapi_app:/app/fastapi_app
       - ./backend/shared:/app/shared
       - ./.env:/app/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB:-polifolio}
+
 
   streamlit_app:
     build:
@@ -46,3 +58,24 @@ services:
       retries: 5
     volumes:
       - ./frontend:/app
+
+
+  db:
+      image: postgres:13
+      environment:
+        POSTGRES_DB: ${POSTGRES_DB:-polifolio}
+        POSTGRES_USER: ${POSTGRES_USER:-user}
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ports:
+        - "5432:5432"
+      volumes:
+        - polifolio_postgres_data:/var/lib/postgresql/data
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-polifolio}"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+volumes:
+  polifolio_postgres_data:
+    name: polifolio_postgres_data
