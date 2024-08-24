@@ -1,7 +1,6 @@
-from .routes import router
-from fastapi import FastAPI
-from sqlalchemy.orm import Session
 from shared.database import init_db
+from fastapi import FastAPI
+from .routes import router
 
 app = FastAPI()
 
