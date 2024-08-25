@@ -1,10 +1,10 @@
+from shared.logging_config import setup_logging
 import streamlit as st
 import requests
-import logging
 
 FASTAPI_URL = "http://fastapi_app:8000"
 
-logging.basicConfig(level=logging.INFO)
+logger = setup_logging()
 
 
 def login(username, password):
@@ -12,19 +12,19 @@ def login(username, password):
         response = requests.post(
             f"{FASTAPI_URL}/token", data={"username": username, "password": password}
         )
-        logging.info(f"Login response status code: {response.status_code}")
-        logging.info(f"Login response content: {response.text}")
+        logger.info(f"Login response status code: {response.status_code}")
+        logger.info(f"Login response content: {response.text}")
 
         if response.status_code == 200:
             data = response.json()
             return data.get("access_token"), data.get("user_id")
         else:
-            logging.error(
+            logger.error(
                 f"Login failed. Status code: {response.status_code}, Response: {response.text}"
             )
         return None, None
     except Exception as e:
-        logging.error(f"Exception during login: {str(e)}")
+        logger.error(f"Exception during login: {str(e)}")
         return None, None
 
 
@@ -39,8 +39,8 @@ def create_user(username, email, password):
 def fetch_portfolio(token):
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(f"{FASTAPI_URL}/portfolio", headers=headers)
-    logging.info(f"Portfolio response status code: {response.status_code}")
-    logging.info(f"Portfolio response content: {response.text}")
+    logger.info(f"Portfolio response status code: {response.status_code}")
+    logger.info(f"Portfolio response content: {response.text}")
     if response.status_code == 200:
         return response.json()
     st.error(f"Error fetching portfolio: {response.status_code} - {response.text}")
@@ -72,6 +72,7 @@ def fetch_stock_price(symbol):
 
 
 def main():
+    logger.info("Starting Streamlit application")
     st.title("Polifolio - Your Smart Portfolio Tracker")
 
     if "logged_in" not in st.session_state:

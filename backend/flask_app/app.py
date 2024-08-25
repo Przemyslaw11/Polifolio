@@ -1,13 +1,15 @@
-from .routes import register_routes
+from shared.logging_config import setup_logging
 from flask import Flask, jsonify
 
-app = Flask(__name__)
 
-register_routes(app)
+logger = setup_logging()
+
+app = Flask(__name__)
 
 
 @app.route("/")
 def home():
+    logger.info("Home route accessed in Flask app")
     return jsonify({"message": "Welcome to the Polifolio supported by Flask!"})
 
 
