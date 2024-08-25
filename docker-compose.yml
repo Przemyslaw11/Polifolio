@@ -57,7 +57,8 @@ services:
       timeout: 10s
       retries: 5
     volumes:
-      - ./frontend:/app
+      - ./frontend:/app/frontend
+      - ./backend/shared:/app/shared
 
 
   db:

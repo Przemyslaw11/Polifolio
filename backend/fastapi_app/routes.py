@@ -1,6 +1,7 @@
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import APIRouter, HTTPException, Depends, status
 from shared.models import User, Stock, StockPrice
+from shared.logging_config import setup_logging
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -8,13 +9,12 @@ from shared.database import get_db
 from pydantic import BaseModel
 from jose import JWTError, jwt
 from dotenv import load_dotenv
-import logging
 import httpx
 import os
 
-logging.basicConfig(level=logging.INFO)
 load_dotenv()
 
+logger = setup_logging()
 router = APIRouter()
 
 ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
@@ -61,12 +61,12 @@ def get_password_hash(password):
 def authenticate_user(db: Session, username: str, password: str):
     user = db.query(User).filter(User.username == username).first()
     if not user:
-        logging.warning(f"User not found: {username}")
+        logger.warning(f"User not found: {username}")
         return False
     if not verify_password(password, user.hashed_password):
-        logging.warning(f"Incorrect password for user: {username}")
+        logger.warning(f"Incorrect password for user: {username}")
         return False
-    logging.info(f"User authenticated: {username}")
+    logger.info(f"User authenticated: {username}")
     return user
 
 
@@ -174,16 +174,16 @@ def get_user_portfolio(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    logging.info(f"Fetching portfolio for user: {current_user.username}")
+    logger.info(f"Fetching portfolio for user: {current_user.username}")
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        logging.error(f"User not found: {current_user.username}")
+        logger.error(f"User not found: {current_user.username}")
         raise HTTPException(status_code=404, detail="User not found")
 
     portfolio = []
-    logging.info(f"Number of stocks for user {user.username}: {len(user.stocks)}")
+    logger.info(f"Number of stocks for user {user.username}: {len(user.stocks)}")
     for stock in user.stocks:
-        logging.info(f"Processing stock: {stock.symbol}")
+        logger.info(f"Processing stock: {stock.symbol}")
         latest_price = (
             db.query(StockPrice)
             .filter(StockPrice.symbol == stock.symbol)
@@ -204,9 +204,9 @@ def get_user_portfolio(
                 }
             )
         else:
-            logging.warning(f"No latest price found for stock: {stock.symbol}")
+            logger.warning(f"No latest price found for stock: {stock.symbol}")
 
-    logging.info(f"Portfolio for user {user.username}: {portfolio}")
+    logger.info(f"Portfolio for user {user.username}: {portfolio}")
     return {"user_id": user.id, "portfolio": portfolio}
 
 
