@@ -152,9 +152,11 @@ def add_stock(
     return db_stock
 
 
-@router.get("/debug/user_stocks/{user_id}")
-def debug_user_stocks(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
+@router.get("/debug/user_stocks")
+def debug_user_stocks(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
         return {"error": "User not found"}
 
@@ -166,7 +168,7 @@ def debug_user_stocks(user_id: int, db: Session = Depends(get_db)):
         }
         for stock in user.stocks
     ]
-    return {"user_id": user_id, "stocks": stocks}
+    return {"user_id": user.id, "stocks": stocks}
 
 
 @router.get("/portfolio")
@@ -174,16 +176,22 @@ def get_user_portfolio(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    logger.info(f"Fetching portfolio for user: {current_user.username}")
+    logger.info(
+        f"Fetching portfolio for user: {current_user.username} (ID: {current_user.id})"
+    )
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        logger.error(f"User not found: {current_user.username}")
+        logger.error(f"User not found: {current_user.username} (ID: {current_user.id})")
         raise HTTPException(status_code=404, detail="User not found")
 
-    portfolio = []
+    logger.info(f"User found: {user.username} (ID: {user.id})")
     logger.info(f"Number of stocks for user {user.username}: {len(user.stocks)}")
+
+    portfolio = []
     for stock in user.stocks:
-        logger.info(f"Processing stock: {stock.symbol}")
+        logger.info(
+            f"Processing stock: {stock.symbol} (Quantity: {stock.quantity}, Purchase Price: {stock.purchase_price})"
+        )
         latest_price = (
             db.query(StockPrice)
             .filter(StockPrice.symbol == stock.symbol)

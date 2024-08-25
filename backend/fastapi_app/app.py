@@ -1,5 +1,6 @@
 from shared.logging_config import setup_logging
 from shared.database import init_db
+from .tasks import scheduler
 from fastapi import FastAPI
 from .routes import router
 
@@ -14,6 +15,9 @@ app.include_router(router)
 async def startup_event():
     logger.info("Starting up FastAPI application")
     init_db()
+
+    if not scheduler.running:
+        scheduler.start()
 
 
 @app.get("/")
