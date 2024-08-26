@@ -38,13 +38,16 @@ def create_user(username, email, password):
 
 def fetch_portfolio(token):
     headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(f"{FASTAPI_URL}/portfolio", headers=headers)
-    logger.info(f"Portfolio response status code: {response.status_code}")
-    logger.info(f"Portfolio response content: {response.text}")
-    if response.status_code == 200:
+    try:
+        response = requests.get(f"{FASTAPI_URL}/portfolio", headers=headers)
+        logger.info(f"Portfolio response status code: {response.status_code}")
+        logger.info(f"Portfolio response content: {response.text}")
+        response.raise_for_status()
         return response.json()
-    st.error(f"Error fetching portfolio: {response.status_code} - {response.text}")
-    return None
+    except requests.RequestException as e:
+        logger.error(f"Error fetching portfolio: {str(e)}")
+        st.error(f"Error fetching portfolio: {str(e)}")
+        return None
 
 
 def add_stock(user_id, token, symbol, quantity, purchase_price):
@@ -72,7 +75,6 @@ def fetch_stock_price(symbol):
 
 
 def main():
-    logger.info("Starting Streamlit application")
     st.title("Polifolio - Your Smart Portfolio Tracker")
 
     if "logged_in" not in st.session_state:
