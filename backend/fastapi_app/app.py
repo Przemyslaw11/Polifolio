@@ -24,3 +24,8 @@ async def startup_event():
 async def root():
     logger.info("Root endpoint accessed")
     return {"message": "Welcome to the Polifolio supported by FastAPI!"}
+
+
+@app.get("/scheduler-status")
+async def scheduler_status():
+    return {"is_running": scheduler.running, "job_count": len(scheduler.get_jobs())}
