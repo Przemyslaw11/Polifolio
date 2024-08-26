@@ -1,6 +1,16 @@
 from shared.logging_config import setup_logging
+from background_manager import set_background
+from streamlit.components.v1 import html
+from dotenv import load_dotenv
 import streamlit as st
 import requests
+import os
+
+load_dotenv()
+
+st.set_page_config(layout="wide")
+
+set_background(os.getenv("BACKGROUND_IMAGE_PATH"))
 
 FASTAPI_URL = "http://fastapi_app:8000"
 
@@ -75,7 +85,6 @@ def fetch_stock_price(symbol):
 
 
 def main():
-    st.title("Polifolio - Your Smart Portfolio Tracker")
 
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
@@ -84,7 +93,6 @@ def main():
         tab1, tab2 = st.tabs(["Login", "Create Account"])
 
         with tab1:
-            st.header("Login")
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
             if st.button("Login"):
@@ -102,7 +110,6 @@ def main():
                     )
 
         with tab2:
-            st.header("Create Account")
             new_username = st.text_input("New Username")
             new_email = st.text_input("Email")
             new_password = st.text_input("New Password", type="password")
@@ -121,7 +128,7 @@ def main():
 
         st.header("Portfolio Management")
         symbol = st.text_input("Stock Symbol")
-        quantity = st.number_input("Quantity", min_value=0.01, step=0.01)
+        quantity = st.number_input("Quantity", min_value=1, step=1, format="%d")
         purchase_price = st.number_input("Purchase Price", min_value=0.01, step=0.01)
 
         if st.button("Add Stock"):
