@@ -9,6 +9,7 @@ from shared.database import get_db
 from pydantic import BaseModel
 from jose import JWTError, jwt
 from dotenv import load_dotenv
+import yfinance as yf
 import httpx
 import os
 
@@ -16,9 +17,6 @@ load_dotenv()
 
 logger = setup_logging()
 router = APIRouter()
-
-ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
-BASE_URL = "https://www.alphavantage.co/query"
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
@@ -199,8 +197,10 @@ def get_user_portfolio(
             .first()
         )
         if latest_price:
-            current_value = stock.quantity * latest_price.price
-            gain_loss = current_value - (stock.quantity * stock.purchase_price)
+            current_value = round(stock.quantity * latest_price.price, 3)
+            gain_loss = round(
+                current_value - (stock.quantity * stock.purchase_price), 3
+            )
             portfolio.append(
                 {
                     "symbol": stock.symbol,
@@ -220,23 +220,13 @@ def get_user_portfolio(
 
 @router.get("/stocks/{symbol}")
 async def get_stock_price(symbol: str):
-    if ALPHAVANTAGE_API_KEY is None:
-        raise HTTPException(status_code=500, detail="API key is not set")
-
-    url = f"{BASE_URL}?function=TIME_SERIES_INTRADAY&symbol={symbol}&interval=1min&apikey={ALPHAVANTAGE_API_KEY}"
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url)
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=response.status_code,
-                detail="Error fetching data from Alpha Vantage",
-            )
-        data = response.json()
     try:
-        latest_time = next(iter(data["Time Series (1min)"]))
-        latest_data = data["Time Series (1min)"][latest_time]
-        price = latest_data["1. open"]
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Stock symbol not found")
-
-    return {"symbol": symbol, "price": price}
+        ticker = yf.Ticker(symbol)
+        data = ticker.history(period="1mo")
+        if data.empty:
+            raise HTTPException(status_code=404, detail="Stock symbol not found")
+        latest_price = round(data["Close"].iloc[-1], 3)
+        return {"symbol": symbol, "price": latest_price}
+    except Exception as e:
+        logger.error(f"Error fetching data for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching stock data")
