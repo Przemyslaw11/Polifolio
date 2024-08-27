@@ -2,8 +2,8 @@ from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from apscheduler.schedulers.background import BackgroundScheduler
 from shared.logging_config import setup_logging
 from shared.models import Stock, StockPrice
-from .routes import get_stock_price
 from shared.database import get_db
+import yfinance as yf
 import asyncio
 
 scheduler = BackgroundScheduler()
@@ -21,9 +21,10 @@ async def update_stock_prices():
         for stock in stocks:
             logger.info(f"Updating price for {stock.symbol}")
             try:
-                price_data = await get_stock_price(stock.symbol)
-                if price_data and "price" in price_data:
-                    price = float(price_data["price"])
+                ticker = yf.Ticker(stock.symbol)
+                data = ticker.history(period="1d")
+                if not data.empty:
+                    price = round(float(data["Close"].iloc[-1]), 3)
                     logger.info(f"Received price for {stock.symbol}: {price}")
 
                     existing_price = (
@@ -39,7 +40,6 @@ async def update_stock_prices():
                         new_price = StockPrice(symbol=stock.symbol, price=price)
                         db.add(new_price)
                         logger.info(f"Added new price entry for {stock.symbol}")
-
                 else:
                     logger.warning(f"No price data received for {stock.symbol}")
             except Exception as e:
@@ -49,6 +49,7 @@ async def update_stock_prices():
         logger.info("Stock price update completed successfully")
     except Exception as e:
         logger.error(f"Error in update_stock_prices: {str(e)}")
+        db.rollback()
     finally:
         db.close()
 
@@ -65,6 +66,6 @@ scheduler.add_job(
     id="update_stock_prices",
     func=lambda: asyncio.run(update_stock_prices()),
     trigger="interval",
-    seconds=60,
+    seconds=15,
 )
 scheduler.start()
