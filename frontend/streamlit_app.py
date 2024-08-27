@@ -3,6 +3,7 @@ from background_manager import set_background
 from streamlit.components.v1 import html
 from dotenv import load_dotenv
 import streamlit as st
+import pandas as pd
 import requests
 import os
 
@@ -84,6 +85,19 @@ def fetch_stock_price(symbol):
     return None
 
 
+def calculate_portfolio_metrics(portfolio):
+    total_value = sum(stock["current_value"] for stock in portfolio)
+    total_gain_loss = sum(stock["gain_loss"] for stock in portfolio)
+    total_investment = sum(
+        stock["quantity"] * stock["purchase_price"] for stock in portfolio
+    )
+    total_percentage_gain_loss = (
+        (total_gain_loss / total_investment) * 100 if total_investment > 0 else 0
+    )
+
+    return total_value, total_gain_loss, total_percentage_gain_loss
+
+
 def main():
 
     if "logged_in" not in st.session_state:
@@ -147,9 +161,65 @@ def main():
                 st.error("User ID not found. Please log in again.")
 
         if st.button("View Portfolio"):
-            portfolio = fetch_portfolio(st.session_state.token)
-            if portfolio:
-                st.write(portfolio)
+            portfolio_data = fetch_portfolio(st.session_state.token)
+
+            if portfolio_data:
+                portfolio = portfolio_data.get("portfolio", [])
+                if portfolio:
+                    df = pd.DataFrame(portfolio)
+                    df.columns = [
+                        "Stock Symbol",
+                        "Quantity",
+                        "Purchase Price",
+                        "Current Price",
+                        "Current Value",
+                        "Profit/Loss",
+                    ]
+                    df["Percentage Gain/Loss (%)"] = (
+                        (df["Profit/Loss"] / (df["Quantity"] * df["Purchase Price"]))
+                        * 100
+                    ).round(2)
+                    df["Quantity"] = df["Quantity"].astype(int)
+                    df["Purchase Price"] = df["Purchase Price"].apply(
+                        lambda x: f"${x:,.2f}"
+                    )
+                    df["Current Price"] = df["Current Price"].apply(
+                        lambda x: f"${x:,.2f}"
+                    )
+                    df["Current Value"] = df["Current Value"].apply(
+                        lambda x: f"${x:,.2f}"
+                    )
+                    df["Profit/Loss"] = df["Profit/Loss"].apply(
+                        lambda x: f"${x:,.2f}" if x >= 0 else f"$-{abs(x):,.2f}"
+                    )
+                    df["Percentage Gain/Loss (%)"] = df[
+                        "Percentage Gain/Loss (%)"
+                    ].apply(lambda x: f"{x:.2f}%" if x >= 0 else f"-{abs(x):.2f}%")
+                    total_value, total_gain_loss, total_percentage_gain_loss = (
+                        calculate_portfolio_metrics(portfolio)
+                    )
+                    st.dataframe(df, hide_index=True)
+
+                    col1, col2, col3 = st.columns(3)
+
+                    with col1:
+                        st.metric(
+                            label="Total Portfolio Value", value=f"${total_value:,.2f}"
+                        )
+                    with col2:
+                        st.metric(
+                            label="Overall Profit/Loss",
+                            value=f"${total_gain_loss:,.2f}",
+                            delta=f"${total_gain_loss:,.2f}",
+                        )
+                    with col3:
+                        st.metric(
+                            label="Overall Percentage Gain/Loss",
+                            value=f"{total_percentage_gain_loss:.2f}%",
+                            delta=f"{total_percentage_gain_loss:.2f}%",
+                        )
+                else:
+                    st.warning("No stocks in the portfolio.")
             else:
                 st.error("Failed to fetch portfolio")
 
