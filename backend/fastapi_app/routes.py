@@ -10,7 +10,6 @@ from pydantic import BaseModel
 from jose import JWTError, jwt
 from dotenv import load_dotenv
 import yfinance as yf
-import httpx
 import os
 
 load_dotenv()

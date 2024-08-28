@@ -11,6 +11,7 @@ app = FastAPI()
 app.include_router(router)
 
 
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting up FastAPI application")
