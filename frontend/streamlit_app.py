@@ -1,10 +1,10 @@
 from shared.logging_config import setup_logging
 from background_manager import set_background
-from streamlit.components.v1 import html
 from dotenv import load_dotenv
 import streamlit as st
 import pandas as pd
 import requests
+import time
 import os
 
 load_dotenv()
@@ -14,6 +14,10 @@ st.set_page_config(layout="wide")
 set_background(os.getenv("BACKGROUND_IMAGE_PATH"))
 
 FASTAPI_URL = "http://fastapi_app:8000"
+STOCK_PRICES_INTERVAL_UPDATES_SECONDS = int(
+    os.getenv("STOCK_PRICES_INTERVAL_UPDATES_SECONDS", 15)
+)
+
 
 logger = setup_logging()
 
@@ -133,15 +137,61 @@ def main():
                     st.error("Failed to create account")
 
     else:
-        st.write(f"Welcome, {st.session_state.username}!")
         if st.button("Logout"):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
 
-        tabs = st.tabs(["Add Stock", "View Portfolio", "Real-Time Stock Prices"])
-
+        tabs = st.tabs(
+            ["Start", "Add Stock", "Real-Time Stock Prices", "View Portfolio"]
+        )
         with tabs[0]:
+            st.markdown(
+                f"""
+                <style>
+                .start-tab {{
+                    text-align: center;
+                    color: #ffffff;
+                }}
+                .start-tab h1 {{
+                    font-size: 2em;
+                    margin-bottom: 10px;
+                    color: #ffffff;
+                }}
+                .start-tab p {{
+                    font-size: 1.2em;
+                    margin-bottom: 20px;
+                    color: #ffffff;
+                }}
+                .start-tab ul {{
+                    list-style: none;
+                    padding: 0;
+                    margin: 0;
+                    font-size: 1.1em;
+                }}
+                .start-tab li {{
+                    margin: 10px 0;
+                }}
+                .start-tab strong {{
+                    color: #ffffff;
+                }}
+                </style>
+
+                <div class="start-tab">
+                    <h1>Welcome, {st.session_state.username}!</h1>
+                    <p style="text-align: left; padding-left: 20px;">To get started, here’s what you can do:</p>
+                    <p>
+                        <ul style="list-style-type: none; padding: 0; text-align: left;">
+                            <li style="display: inline-block; margin: 0 10px;"><strong>Add Stock:</strong> Easily add new stocks to your portfolio.</li>
+                            <li style="display: inline-block; margin: 0 10px;"><strong>Real-Time Stock Prices:</strong> Stay updated with the latest stock prices to make informed decisions.</li>
+                            <li style="display: inline-block; margin: 0 10px;"><strong>View Portfolio:</strong> Review your portfolio's performance and track your progress in real time.</li>
+                        </ul>
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with tabs[1]:
             symbol = st.text_input("Stock Symbol")
             quantity = st.number_input("Quantity", min_value=1, step=1, format="%d")
             purchase_price = st.number_input(
@@ -163,76 +213,6 @@ def main():
                 else:
                     st.error("User ID not found. Please log in again.")
 
-        with tabs[1]:
-            if st.button("Update"):
-                portfolio_data = fetch_portfolio(st.session_state.token)
-
-                if portfolio_data:
-                    portfolio = portfolio_data.get("portfolio", [])
-                    if portfolio:
-                        df = pd.DataFrame(portfolio)
-                        df.columns = [
-                            "Stock Symbol",
-                            "Quantity",
-                            "Purchase Price",
-                            "Current Price",
-                            "Current Value",
-                            "Profit/Loss",
-                        ]
-
-                        df["Percentage Gain/Loss (%)"] = (
-                            (
-                                df["Profit/Loss"]
-                                / (df["Quantity"] * df["Purchase Price"])
-                            )
-                            * 100
-                        ).round(2)
-                        df["Quantity"] = df["Quantity"].astype(int)
-                        df["Purchase Price"] = df["Purchase Price"].apply(
-                            lambda x: f"${x:,.2f}"
-                        )
-                        df["Current Price"] = df["Current Price"].apply(
-                            lambda x: f"${x:,.2f}"
-                        )
-                        df["Current Value"] = df["Current Value"].apply(
-                            lambda x: f"${x:,.2f}"
-                        )
-                        df["Profit/Loss"] = df["Profit/Loss"].apply(
-                            lambda x: f"${x:,.2f}" if x >= 0 else f"$-{abs(x):,.2f}"
-                        )
-                        df["Percentage Gain/Loss (%)"] = df[
-                            "Percentage Gain/Loss (%)"
-                        ].apply(lambda x: f"{x:.2f}%" if x >= 0 else f"-{abs(x):.2f}%")
-                        total_value, total_gain_loss, total_percentage_gain_loss = (
-                            calculate_portfolio_metrics(portfolio)
-                        )
-
-                        st.dataframe(df, hide_index=True)
-
-                        col1, col2, col3 = st.columns(3)
-
-                        with col1:
-                            st.metric(
-                                label="Total Portfolio Value",
-                                value=f"${total_value:,.2f}",
-                            )
-                        with col2:
-                            st.metric(
-                                label="Overall Profit/Loss",
-                                value=f"${total_gain_loss:,.2f}",
-                                delta=f"${total_gain_loss:,.2f}",
-                            )
-                        with col3:
-                            st.metric(
-                                label="Overall Percentage Gain/Loss",
-                                value=f"{total_percentage_gain_loss:.2f}%",
-                                delta=f"{total_percentage_gain_loss:.2f}%",
-                            )
-                    else:
-                        st.warning("No stocks in the portfolio.")
-                else:
-                    st.error("Failed to fetch portfolio")
-
         with tabs[2]:
             stock_symbol = st.text_input("Enter Stock Symbol for Price", "AAPL")
             if st.button("Get Stock Price"):
@@ -243,6 +223,84 @@ def main():
                     )
                 else:
                     st.error("Failed to fetch stock price")
+        with tabs[3]:
+
+            placeholder = st.empty()
+
+            while True:
+                portfolio_data = fetch_portfolio(st.session_state.token)
+
+                with placeholder.container():
+                    if portfolio_data:
+                        portfolio = portfolio_data.get("portfolio", [])
+                        if portfolio:
+                            df = pd.DataFrame(portfolio)
+                            df.columns = [
+                                "Stock Symbol",
+                                "Quantity",
+                                "Purchase Price",
+                                "Current Price",
+                                "Current Value",
+                                "Profit/Loss",
+                            ]
+
+                            df["Percentage Gain/Loss (%)"] = (
+                                (
+                                    df["Profit/Loss"]
+                                    / (df["Quantity"] * df["Purchase Price"])
+                                )
+                                * 100
+                            ).round(2)
+                            df["Quantity"] = df["Quantity"].astype(int)
+                            df["Purchase Price"] = df["Purchase Price"].apply(
+                                lambda x: f"${x:,.2f}"
+                            )
+                            df["Current Price"] = df["Current Price"].apply(
+                                lambda x: f"${x:,.2f}"
+                            )
+                            df["Current Value"] = df["Current Value"].apply(
+                                lambda x: f"${x:,.2f}"
+                            )
+                            df["Profit/Loss"] = df["Profit/Loss"].apply(
+                                lambda x: f"${x:,.2f}" if x >= 0 else f"$-{abs(x):,.2f}"
+                            )
+                            df["Percentage Gain/Loss (%)"] = df[
+                                "Percentage Gain/Loss (%)"
+                            ].apply(
+                                lambda x: f"{x:.2f}%" if x >= 0 else f"-{abs(x):.2f}%"
+                            )
+
+                            total_value, total_gain_loss, total_percentage_gain_loss = (
+                                calculate_portfolio_metrics(portfolio)
+                            )
+
+                            st.dataframe(df, hide_index=True)
+
+                            col1, col2, col3 = st.columns(3)
+
+                            with col1:
+                                st.metric(
+                                    label="Total Portfolio Value",
+                                    value=f"${total_value:,.2f}",
+                                )
+                            with col2:
+                                st.metric(
+                                    label="Overall Profit/Loss",
+                                    value=f"${total_gain_loss:,.2f}",
+                                    delta=f"${total_gain_loss:,.2f}",
+                                )
+                            with col3:
+                                st.metric(
+                                    label="Overall Percentage Gain/Loss",
+                                    value=f"{total_percentage_gain_loss:.2f}%",
+                                    delta=f"{total_percentage_gain_loss:.2f}%",
+                                )
+                        else:
+                            st.warning("No stocks in the portfolio.")
+                    else:
+                        st.error("Failed to fetch portfolio")
+
+                time.sleep(STOCK_PRICES_INTERVAL_UPDATES_SECONDS)
 
 
 if __name__ == "__main__":

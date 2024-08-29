@@ -5,10 +5,15 @@ from shared.models import Stock, StockPrice
 from shared.database import get_db
 import yfinance as yf
 import asyncio
+import os
 
 scheduler = BackgroundScheduler()
 
 logger = setup_logging()
+
+STOCK_PRICES_INTERVAL_UPDATES_SECONDS = int(
+    os.getenv("STOCK_PRICES_INTERVAL_UPDATES_SECONDS", 15)
+)
 
 
 async def update_stock_prices():
@@ -66,6 +71,6 @@ scheduler.add_job(
     id="update_stock_prices",
     func=lambda: asyncio.run(update_stock_prices()),
     trigger="interval",
-    seconds=15,
+    seconds=STOCK_PRICES_INTERVAL_UPDATES_SECONDS,
 )
 scheduler.start()
