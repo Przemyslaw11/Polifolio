@@ -2,12 +2,12 @@ import streamlit as st
 import base64
 
 
-def set_background(image_path):
+def set_background(image_path: str) -> None:
     """
-    Function to set the background image with a dark overlay for the Streamlit app.
+    Set the background image with a dark overlay for the Streamlit app.
 
-    Parameters:
-    - image_path: The path to the image file to be used as the background.
+    Args:
+        image_path (str): The path to the image file to be used as the background.
     """
     with open(image_path, "rb") as image_file:
         image_bytes = image_file.read()
