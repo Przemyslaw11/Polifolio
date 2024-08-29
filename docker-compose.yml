@@ -1,26 +1,5 @@
 version: '3'
 services:
-  flask_app:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.flask
-    ports:
-      - "5000:5000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    volumes:
-      - ./backend/flask_app:/app/flask_app
-      - ./backend/shared:/app/shared
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB:-polifolio}
-
-
   fastapi_app:
     build:
       context: .
