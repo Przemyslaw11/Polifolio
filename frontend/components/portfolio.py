@@ -1,4 +1,6 @@
 from frontend.config import STOCK_PRICES_INTERVAL_UPDATES_SECONDS
+from frontend.api.client import APIClient
+from typing import List, Dict, Tuple
 import streamlit as st
 import pandas as pd
 import time
@@ -6,7 +8,18 @@ import time
 
 class PortfolioManager:
     @staticmethod
-    def calculate_portfolio_metrics(portfolio):
+    def calculate_portfolio_metrics(
+        portfolio: List[Dict],
+    ) -> Tuple[float, float, float]:
+        """
+        Calculate portfolio metrics based on the given portfolio data.
+
+        Args:
+            portfolio (List[Dict]): List of dictionaries containing stock data.
+
+        Returns:
+            Tuple[float, float, float]: Total value, total gain/loss, and total percentage gain/loss.
+        """
         total_value = sum(stock["current_value"] for stock in portfolio)
         total_gain_loss = sum(stock["gain_loss"] for stock in portfolio)
         total_investment = sum(
@@ -19,7 +32,16 @@ class PortfolioManager:
         return total_value, total_gain_loss, total_percentage_gain_loss
 
     @staticmethod
-    def format_portfolio_dataframe(portfolio) -> pd.DataFrame:
+    def format_portfolio_dataframe(portfolio: List[Dict]) -> pd.DataFrame:
+        """
+        Format the portfolio data into a pandas DataFrame.
+
+        Args:
+            portfolio (List[Dict]): List of dictionaries containing stock data.
+
+        Returns:
+            pd.DataFrame: Formatted DataFrame containing portfolio information.
+        """
         df = pd.DataFrame(portfolio)
         df.columns = [
             "Stock Symbol",
@@ -47,7 +69,13 @@ class PortfolioManager:
         return df
 
 
-def show_view_portfolio_tab(api_client):
+def show_view_portfolio_tab(api_client: APIClient) -> None:
+    """
+    Display the view portfolio tab and handle portfolio data fetching and display.
+
+    Args:
+        api_client (APIClient): The API client instance for making requests.
+    """
     portfolio_manager = PortfolioManager()
     placeholder = st.empty()
 

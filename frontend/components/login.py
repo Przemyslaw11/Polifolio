@@ -3,7 +3,10 @@ from frontend.config import logger
 import streamlit as st
 
 
-def show_login_page():
+def show_login_page() -> None:
+    """
+    Display the login page with login and create account tabs.
+    """
     tab1, tab2 = st.tabs(["Login", "Create Account"])
 
     with tab1:
@@ -13,7 +16,10 @@ def show_login_page():
         show_create_account_tab()
 
 
-def show_login_tab():
+def show_login_tab() -> None:
+    """
+    Display the login tab and handle user login.
+    """
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     if st.button("Login"):
@@ -31,7 +37,10 @@ def show_login_tab():
             st.error("Login failed. Please check the logs for more information.")
 
 
-def show_create_account_tab():
+def show_create_account_tab() -> None:
+    """
+    Display the create account tab and handle user registration.
+    """
     api_client = APIClient()
     new_username = st.text_input("New Username")
     new_email = st.text_input("Email")

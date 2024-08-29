@@ -16,7 +16,10 @@ class StreamlitApp:
         set_background(BACKGROUND_IMAGE_PATH)
         self.api_client = APIClient()
 
-    def run(self):
+    def run(self) -> None:
+        """
+        Run the Streamlit application.
+        """
         if "logged_in" not in st.session_state:
             st.session_state.logged_in = False
 
@@ -25,7 +28,10 @@ class StreamlitApp:
         else:
             self.show_main_page()
 
-    def show_main_page(self):
+    def show_main_page(self) -> None:
+        """
+        Display the main page of the application.
+        """
         if st.button("Logout"):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
@@ -44,11 +50,20 @@ class StreamlitApp:
         with tabs[3]:
             show_view_portfolio_tab(self.api_client)
 
-    def show_start_tab(self):
+    def show_start_tab(self) -> None:
+        """
+        Display the start tab content.
+        """
         st.markdown(self.get_start_tab_html(), unsafe_allow_html=True)
 
     @staticmethod
-    def get_start_tab_html():
+    def get_start_tab_html() -> str:
+        """
+        Generate the HTML content for the start tab.
+
+        Returns:
+            str: HTML content for the start tab.
+        """
         return f"""
         <style>
         .start-tab {{
