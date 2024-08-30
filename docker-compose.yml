@@ -23,7 +23,6 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB:-polifolio}
 
-
   streamlit_app:
     build:
       context: .
@@ -37,25 +36,26 @@ services:
       retries: 5
     volumes:
       - ./frontend:/app/frontend
-      - ./backend/shared:/app/backend/shared
+      - ./backend/shared:/app/shared
+      - ./.env:/app/.env
     depends_on:
       - fastapi_app
 
   db:
-      image: postgres:13
-      environment:
-        POSTGRES_DB: ${POSTGRES_DB:-polifolio}
-        POSTGRES_USER: ${POSTGRES_USER:-user}
-        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      ports:
-        - "5432:5432"
-      volumes:
-        - postgres_data:/var/lib/postgresql/data
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-polifolio}"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
+    image: postgres:13
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-polifolio}
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-polifolio}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
