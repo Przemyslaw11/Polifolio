@@ -1,4 +1,9 @@
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+from apscheduler.events import (
+    EVENT_JOB_EXECUTED,
+    EVENT_JOB_ERROR,
+    JobExecutionEvent,
+    JobSubmissionEvent,
+)
 from apscheduler.schedulers.background import BackgroundScheduler
 from shared.logging_config import setup_logging
 from shared.models import Stock, StockPrice
@@ -8,48 +13,59 @@ import asyncio
 import os
 
 scheduler = BackgroundScheduler()
-
 logger = setup_logging()
 
 STOCK_PRICES_INTERVAL_UPDATES_SECONDS = int(
-    os.getenv("STOCK_PRICES_INTERVAL_UPDATES_SECONDS", 15)
+    os.getenv("STOCK_PRICES_INTERVAL_UPDATES_SECONDS", 60)
 )
+
+
+class StockService:
+    def __init__(self, db):
+        self.db = db
+
+    async def update_stock_price(self, stock):
+        logger.info(f"Updating price for {stock.symbol}")
+        price = await self.fetch_stock_price(stock.symbol)
+        if price is not None:
+            self._save_stock_price(stock.symbol, price)
+
+    async def fetch_stock_price(self, symbol):
+        try:
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period="1d")
+            if not data.empty:
+                price = round(float(data["Close"].iloc[-1]), 3)
+                logger.info(f"Received price for {symbol}: {price}")
+                return price
+            else:
+                logger.warning(f"No price data received for {symbol}")
+        except Exception as e:
+            logger.error(f"Error fetching price for {symbol}: {str(e)}")
+            return None
+
+    def _save_stock_price(self, symbol, price):
+        existing_price = (
+            self.db.query(StockPrice).filter(StockPrice.symbol == symbol).first()
+        )
+        if existing_price:
+            existing_price.price = price
+            logger.info(f"Updated price for {symbol}")
+        else:
+            new_price = StockPrice(symbol=symbol, price=price)
+            self.db.add(new_price)
+            logger.info(f"Added new price entry for {symbol}")
 
 
 async def update_stock_prices():
     logger.info("Starting stock price update")
     db = next(get_db())
+    stock_service = StockService(db)
     try:
         stocks = db.query(Stock).all()
         logger.info(f"Found {len(stocks)} stocks to update")
-
         for stock in stocks:
-            logger.info(f"Updating price for {stock.symbol}")
-            try:
-                ticker = yf.Ticker(stock.symbol)
-                data = ticker.history(period="1d")
-                if not data.empty:
-                    price = round(float(data["Close"].iloc[-1]), 3)
-                    logger.info(f"Received price for {stock.symbol}: {price}")
-
-                    existing_price = (
-                        db.query(StockPrice)
-                        .filter(StockPrice.symbol == stock.symbol)
-                        .first()
-                    )
-
-                    if existing_price:
-                        existing_price.price = price
-                        logger.info(f"Updated price for {stock.symbol}")
-                    else:
-                        new_price = StockPrice(symbol=stock.symbol, price=price)
-                        db.add(new_price)
-                        logger.info(f"Added new price entry for {stock.symbol}")
-                else:
-                    logger.warning(f"No price data received for {stock.symbol}")
-            except Exception as e:
-                logger.error(f"Error updating price for {stock.symbol}: {str(e)}")
-
+            await stock_service.update_stock_price(stock)
         db.commit()
         logger.info("Stock price update completed successfully")
     except Exception as e:
@@ -60,10 +76,19 @@ async def update_stock_prices():
 
 
 def job_listener(event):
-    if event.exception:
-        logger.error(f"Job failed: {event.job_id}")
+    if isinstance(event, JobExecutionEvent):
+        if event.exception:
+            logger.error(f"Job {event.job_id} failed")
+            if hasattr(event, "job") and hasattr(event.job, "func"):
+                logger.error(f"Error executing job: {event.job.func.__name__}")
+        else:
+            logger.info(f"Job {event.job_id} completed successfully")
+            if hasattr(event, "job") and hasattr(event.job, "func"):
+                logger.debug(f"Job executed: {event.job.func.__name__}")
+    elif isinstance(event, JobSubmissionEvent):
+        logger.info(f"Job submitted: {event.job_id}")
     else:
-        logger.info(f"Job completed successfully: {event.job_id}")
+        logger.warning(f"Unhandled event type: {type(event)}")
 
 
 scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
