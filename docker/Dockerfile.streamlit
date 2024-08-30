@@ -10,8 +10,9 @@ RUN pip install --no-cache-dir -r /app/requirements.txt && \
 
 COPY ./frontend /app/frontend
 COPY ./backend/shared /app/shared
+
 COPY .env /app/.env
 
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/frontend
 
 CMD ["streamlit", "run", "frontend/main.py", "--server.port", "8502"]

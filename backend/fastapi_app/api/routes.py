@@ -1,103 +1,26 @@
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi_app.services.auth import (
+    authenticate_user,
+    create_access_token,
+    get_current_user,
+    get_password_hash,
+)
+from fastapi_app.schemas.user import UserCreate, Token, StockCreate
 from fastapi import APIRouter, HTTPException, Depends, status
-from shared.models import User, Stock, StockPrice
+from fastapi_app.models.user import User, Stock, StockPrice
+from fastapi.security import OAuth2PasswordRequestForm
 from shared.logging_config import setup_logging
-from passlib.context import CryptContext
-from datetime import datetime, timedelta
+from fastapi_app.db.database import get_db
 from sqlalchemy.orm import Session
-from shared.database import get_db
-from pydantic import BaseModel
-from jose import JWTError, jwt
-from dotenv import load_dotenv
+from datetime import timedelta
 import yfinance as yf
 import os
 
-load_dotenv()
 
 logger = setup_logging()
 router = APIRouter()
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM")
+
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 15))
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-
-class UserCreate(BaseModel):
-    username: str
-    email: str
-    password: str
-
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    user_id: int
-
-
-class TokenData(BaseModel):
-    username: str | None = None
-
-
-class StockCreate(BaseModel):
-    symbol: str
-    quantity: float
-    purchase_price: float
-
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-
-def authenticate_user(db: Session, username: str, password: str):
-    user = db.query(User).filter(User.username == username).first()
-    if not user:
-        logger.warning(f"User not found: {username}")
-        return False
-    if not verify_password(password, user.hashed_password):
-        logger.warning(f"Incorrect password for user: {username}")
-        return False
-    logger.info(f"User authenticated: {username}")
-    return user
-
-
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-
-async def get_current_user(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
-):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        token_data = TokenData(username=username)
-    except JWTError:
-        raise credentials_exception
-    user = db.query(User).filter(User.username == token_data.username).first()
-    if user is None:
-        raise credentials_exception
-    return user
 
 
 @router.post("/users/", response_model=UserCreate)

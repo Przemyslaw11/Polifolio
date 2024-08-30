@@ -1,12 +1,9 @@
-from frontend.components.stock import (
-    show_add_stock_tab,
-    show_real_time_stock_prices_tab,
-)
-from frontend.components.portfolio import show_view_portfolio_tab
-from frontend.utils.background_manager import set_background
-from frontend.components.login import show_login_page
-from frontend.config import BACKGROUND_IMAGE_PATH, logger
-from frontend.api.client import APIClient
+from components.stock import show_add_stock_tab, show_real_time_stock_prices_tab
+from components.portfolio import show_view_portfolio_tab
+from utils.background_manager import set_background
+from config import BACKGROUND_IMAGE_PATH, logger
+from components.login import show_login_page
+from api.client import APIClient
 import streamlit as st
 
 

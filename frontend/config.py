@@ -1,4 +1,4 @@
-from backend.shared.logging_config import setup_logging
+from shared.logging_config import setup_logging
 from dotenv import load_dotenv
 import sys
 import os
