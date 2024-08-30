@@ -1,8 +1,11 @@
+from apscheduler.events import JobExecutionEvent, JobSubmissionEvent
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi_app.models.user import Stock, StockPrice
 from shared.logging_config import setup_logging
 from fastapi_app.db.database import get_db
+from sqlalchemy.orm import Session
+from typing import Optional
 import yfinance as yf
 import asyncio
 import os
@@ -16,16 +19,33 @@ STOCK_PRICES_INTERVAL_UPDATES_SECONDS = int(
 
 
 class StockService:
-    def __init__(self, db):
+    def __init__(self, db: Session):
+        """
+        Initialize the StockService with a database session.
+        args:
+            - db: The database session
+        """
         self.db = db
 
-    async def update_stock_price(self, stock):
+    async def update_stock_price(self, stock: Stock) -> None:
+        """
+        Update the price of a given stock.
+        args:
+            - stock: The Stock object to update
+        return: None
+        """
         logger.info(f"Updating price for {stock.symbol}")
         price = await self.fetch_stock_price(stock.symbol)
         if price is not None:
             self._save_stock_price(stock.symbol, price)
 
-    async def fetch_stock_price(self, symbol):
+    async def fetch_stock_price(self, symbol: str) -> Optional[float]:
+        """
+        Fetch the current price of a stock from Yahoo Finance.
+        args:
+            - symbol: The stock symbol to fetch the price for
+        return: The current price of the stock, or None if an error occurred
+        """
         try:
             ticker = yf.Ticker(symbol)
             data = ticker.history(period="1d")
@@ -39,7 +59,14 @@ class StockService:
             logger.error(f"Error fetching price for {symbol}: {str(e)}")
             return None
 
-    def _save_stock_price(self, symbol, price):
+    def _save_stock_price(self, symbol: str, price: float) -> None:
+        """
+        Save or update the price of a stock in the database.
+        args:
+            - symbol: The stock symbol
+            - price: The current price of the stock
+        return: None
+        """
         existing_price = (
             self.db.query(StockPrice).filter(StockPrice.symbol == symbol).first()
         )
@@ -52,7 +79,12 @@ class StockService:
             logger.info(f"Added new price entry for {symbol}")
 
 
-async def update_stock_prices():
+async def update_stock_prices() -> None:
+    """
+    Update the prices of all stocks in the database.
+    args: None
+    return: None
+    """
     logger.info("Starting stock price update")
     db = next(get_db())
     stock_service = StockService(db)
@@ -70,8 +102,13 @@ async def update_stock_prices():
         db.close()
 
 
-def job_listener(event):
-    from apscheduler.events import JobExecutionEvent, JobSubmissionEvent
+def job_listener(event) -> None:
+    """
+    Listen for job execution events and log their status.
+    args:
+        - event: The job execution event
+    return: None
+    """
 
     if isinstance(event, JobExecutionEvent):
         if event.exception:

@@ -15,9 +15,3 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: str | None = None
-
-
-class StockCreate(BaseModel):
-    symbol: str
-    quantity: float
-    purchase_price: float

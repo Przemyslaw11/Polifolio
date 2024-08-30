@@ -4,14 +4,17 @@ from fastapi_app.services.auth import (
     get_current_user,
     get_password_hash,
 )
-from fastapi_app.schemas.user import UserCreate, Token, StockCreate
+from fastapi_app.schemas.stock import StockCreate, StockResponse, UserStocksResponse
+from fastapi_app.schemas.portfolio import PortfolioResponse, PortfolioItem
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi_app.models.user import User, Stock, StockPrice
+from fastapi_app.schemas.user import UserCreate, Token
 from fastapi.security import OAuth2PasswordRequestForm
 from shared.logging_config import setup_logging
 from fastapi_app.db.database import get_db
 from sqlalchemy.orm import Session
 from datetime import timedelta
+from typing import Dict
 import yfinance as yf
 import os
 
@@ -24,7 +27,14 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 15))
 
 
 @router.post("/users/", response_model=UserCreate)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
+def create_user(user: UserCreate, db: Session = Depends(get_db)) -> UserCreate:
+    """
+    Create a new user in the database.
+    args:
+        - user: UserCreate model containing user details
+        - db: The database session
+    return: The created UserCreate object
+    """
     db_user = User(
         username=user.username,
         email=user.email,
@@ -39,7 +49,14 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 @router.post("/token", response_model=Token)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
-):
+) -> Token:
+    """
+    Log in a user and return an access token.
+    args:
+        - form_data: OAuth2PasswordRequestForm containing username and password
+        - db: The database session
+    return: A Token object containing access token and token type
+    """
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -60,7 +77,16 @@ def add_stock(
     stock: StockCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
+) -> Stock:
+    """
+    Add a stock for a user.
+    args:
+        - user_id: ID of the user to add the stock for
+        - stock: StockCreate model containing stock details
+        - current_user: The currently authenticated user
+        - db: The database session
+    return: The added Stock object
+    """
     if current_user.id != user_id:
         raise HTTPException(
             status_code=403, detail="Not authorized to add stocks for this user"
@@ -72,46 +98,52 @@ def add_stock(
     return db_stock
 
 
-@router.get("/debug/user_stocks")
+@router.get("/debug/user_stocks", response_model=UserStocksResponse)
 def debug_user_stocks(
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+) -> UserStocksResponse:
+    """
+    Debug endpoint to get the user's stocks.
+    args:
+        - current_user: The currently authenticated user
+        - db: The database session
+    return: A dictionary containing user ID and stocks
+    """
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
         return {"error": "User not found"}
 
     stocks = [
-        {
-            "symbol": stock.symbol,
-            "quantity": stock.quantity,
-            "purchase_price": stock.purchase_price,
-        }
+        StockResponse(
+            symbol=stock.symbol,
+            quantity=stock.quantity,
+            purchase_price=stock.purchase_price,
+        )
         for stock in user.stocks
     ]
     return {"user_id": user.id, "stocks": stocks}
 
 
-@router.get("/portfolio")
+@router.get("/portfolio", response_model=PortfolioResponse)
 def get_user_portfolio(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
-    logger.info(
-        f"Fetching portfolio for user: {current_user.username} (ID: {current_user.id})"
-    )
+) -> PortfolioResponse:
+    """
+    Get the portfolio of the currently authenticated user.
+
+    args:
+        - current_user: The currently authenticated user
+        - db: The database session
+
+    return: A PortfolioResponse model containing the user ID and a list of PortfolioItem objects.
+    """
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
-        logger.error(f"User not found: {current_user.username} (ID: {current_user.id})")
         raise HTTPException(status_code=404, detail="User not found")
-
-    logger.info(f"User found: {user.username} (ID: {user.id})")
-    logger.info(f"Number of stocks for user {user.username}: {len(user.stocks)}")
 
     portfolio = []
     for stock in user.stocks:
-        logger.info(
-            f"Processing stock: {stock.symbol} (Quantity: {stock.quantity}, Purchase Price: {stock.purchase_price})"
-        )
         latest_price = (
             db.query(StockPrice)
             .filter(StockPrice.symbol == stock.symbol)
@@ -124,31 +156,36 @@ def get_user_portfolio(
                 current_value - (stock.quantity * stock.purchase_price), 3
             )
             portfolio.append(
-                {
-                    "symbol": stock.symbol,
-                    "quantity": stock.quantity,
-                    "purchase_price": stock.purchase_price,
-                    "current_price": latest_price.price,
-                    "current_value": current_value,
-                    "gain_loss": gain_loss,
-                }
+                PortfolioItem(
+                    symbol=stock.symbol,
+                    quantity=stock.quantity,
+                    purchase_price=stock.purchase_price,
+                    current_price=latest_price.price,
+                    current_value=current_value,
+                    gain_loss=gain_loss,
+                )
             )
         else:
             logger.warning(f"No latest price found for stock: {stock.symbol}")
 
-    logger.info(f"Portfolio for user {user.username}: {portfolio}")
-    return {"user_id": user.id, "portfolio": portfolio}
+    return PortfolioResponse(user_id=user.id, portfolio=portfolio)
 
 
-@router.get("/stocks/{symbol}")
-async def get_stock_price(symbol: str):
+@router.get("/stocks/{symbol}", response_model=StockResponse)
+async def get_stock_price(symbol: str) -> StockResponse:
+    """
+    Get the current price of a stock by symbol.
+    args:
+        - symbol: The stock symbol to fetch
+    return: A StockResponse model containing the stock symbol and its current price
+    """
     try:
         ticker = yf.Ticker(symbol)
         data = ticker.history(period="1mo")
         if data.empty:
             raise HTTPException(status_code=404, detail="Stock symbol not found")
-        latest_price = round(data["Close"].iloc[-1], 3)
-        return {"symbol": symbol, "price": latest_price}
+        latest_price = float(round(data["Close"].iloc[-1], 3))
+        return StockResponse(symbol=symbol, price=latest_price)
     except Exception as e:
         logger.error(f"Error fetching data for {symbol}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error fetching stock data")

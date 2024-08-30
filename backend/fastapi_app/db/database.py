@@ -1,6 +1,6 @@
 from shared.logging_config import setup_logging
 from fastapi_app.models.user import Base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import create_engine
 import os
 
@@ -13,13 +13,23 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-def init_db():
+def init_db() -> None:
+    """
+    Initialize the database by creating all tables.
+    args: None
+    return: None
+    """
     logger.info("Initializing database")
     Base.metadata.create_all(bind=engine)
     logger.info("Database initialized")
 
 
-def get_db():
+def get_db() -> Session:
+    """
+    Dependency to get the database session.
+    args: None
+    return: A database session
+    """
     db = SessionLocal()
     try:
         yield db

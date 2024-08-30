@@ -2,8 +2,14 @@ from logging.handlers import RotatingFileHandler
 import logging
 
 
-def setup_logging(log_file="app.log"):
-    logger = logging.getLogger("polifolio")
+def setup_logging(log_file: str = "app.log") -> logging.Logger:
+    """
+    Set up logging configuration.
+    args:
+        - log_file: The name of the log file
+    return: Configured logger instance
+    """
+    logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
 
