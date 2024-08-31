@@ -33,7 +33,7 @@ def show_login_tab() -> None:
             st.success("Logged in successfully!")
             st.rerun()
         else:
-            logger.error("Login failed")
+            logger.error("Login failed", exc_info=True)
             st.error("Login failed. Please check the logs for more information.")
 
 
@@ -46,7 +46,8 @@ def show_create_account_tab() -> None:
     new_email = st.text_input("Email")
     new_password = st.text_input("New Password", type="password")
     if st.button("Create Account"):
-        if api_client.create_user(new_username, new_email, new_password):
-            st.success("Account created successfully! Please log in.")
+        success, message = api_client.create_user(new_username, new_email, new_password)
+        if success:
+            st.success(message)
         else:
-            st.error("Failed to create account")
+            st.error(message)

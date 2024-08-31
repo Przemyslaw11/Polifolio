@@ -8,42 +8,51 @@ from fastapi_app.schemas.stock import StockCreate, StockResponse, UserStocksResp
 from fastapi_app.schemas.portfolio import PortfolioResponse, PortfolioItem
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi_app.models.user import User, Stock, StockPrice
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from fastapi_app.schemas.user import UserCreate, Token
 from fastapi.security import OAuth2PasswordRequestForm
 from shared.logging_config import setup_logging
 from fastapi_app.db.database import get_db
 from sqlalchemy.orm import Session
 from datetime import timedelta
-from typing import Dict
 import yfinance as yf
+import warnings
 import os
 
 
 logger = setup_logging()
 router = APIRouter()
 
+warnings.filterwarnings("ignore", category=FutureWarning)  # yfinance
 
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 15))
 
 
 @router.post("/users/", response_model=UserCreate)
 def create_user(user: UserCreate, db: Session = Depends(get_db)) -> UserCreate:
-    """
-    Create a new user in the database.
-    args:
-        - user: UserCreate model containing user details
-        - db: The database session
-    return: The created UserCreate object
-    """
-    db_user = User(
-        username=user.username,
-        email=user.email,
-        hashed_password=get_password_hash(user.password),
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return UserCreate(username=db_user.username, email=db_user.email, password="")
+    """Create a new user in the database."""
+    try:
+        db_user = User(
+            username=user.username,
+            email=user.email,
+            hashed_password=get_password_hash(user.password),
+        )
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        return UserCreate(username=db_user.username, email=db_user.email, password="")
+    except IntegrityError as e:
+        db.rollback()
+        if "unique constraint" in str(e.orig):
+            raise HTTPException(
+                status_code=400, detail="Username or email already registered."
+            )
+        raise HTTPException(
+            status_code=500, detail="An unexpected database error occurred."
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 
 @router.post("/token", response_model=Token)

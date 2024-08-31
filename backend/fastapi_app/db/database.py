@@ -1,6 +1,6 @@
+from sqlalchemy.orm import Session, sessionmaker
 from shared.logging_config import setup_logging
 from fastapi_app.models.user import Base
-from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import create_engine
 import os
 

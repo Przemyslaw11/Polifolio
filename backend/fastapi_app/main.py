@@ -22,7 +22,6 @@ async def startup_event() -> None:
     init_db()
     if not scheduler.running:
         scheduler.start()
-    logger.info("Scheduler started")
 
 
 @app.on_event("shutdown")
@@ -34,7 +33,6 @@ async def shutdown_event() -> None:
     """
     if scheduler.running:
         scheduler.shutdown()
-    logger.info("Scheduler shut down")
 
 
 @app.get("/")
