@@ -106,33 +106,6 @@ def add_stock(
     db.refresh(db_stock)
     return db_stock
 
-
-@router.get("/debug/user_stocks", response_model=UserStocksResponse)
-def debug_user_stocks(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
-) -> UserStocksResponse:
-    """
-    Debug endpoint to get the user's stocks.
-    args:
-        - current_user: The currently authenticated user
-        - db: The database session
-    return: A dictionary containing user ID and stocks
-    """
-    user = db.query(User).filter(User.id == current_user.id).first()
-    if not user:
-        return {"error": "User not found"}
-
-    stocks = [
-        StockResponse(
-            symbol=stock.symbol,
-            quantity=stock.quantity,
-            purchase_price=stock.purchase_price,
-        )
-        for stock in user.stocks
-    ]
-    return {"user_id": user.id, "stocks": stocks}
-
-
 @router.get("/portfolio", response_model=PortfolioResponse)
 def get_user_portfolio(
     current_user: User = Depends(get_current_user),
