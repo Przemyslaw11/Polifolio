@@ -4,18 +4,19 @@ from fastapi_app.services.auth import (
     get_current_user,
     get_password_hash,
 )
-from fastapi_app.schemas.stock import StockCreate, StockResponse, UserStocksResponse
+from fastapi_app.schemas.stock import StockCreate, StockResponse, StockAnalysisResponse
 from fastapi_app.schemas.portfolio import PortfolioResponse, PortfolioItem
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi_app.models.user import User, Stock, StockPrice
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from fastapi_app.schemas.user import UserCreate, Token
 from fastapi.security import OAuth2PasswordRequestForm
 from shared.logging_config import setup_logging
 from fastapi_app.db.database import get_db
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from datetime import timedelta
 import yfinance as yf
+import numpy as np
 import warnings
 import os
 
@@ -106,6 +107,7 @@ def add_stock(
     db.refresh(db_stock)
     return db_stock
 
+
 @router.get("/portfolio", response_model=PortfolioResponse)
 def get_user_portfolio(
     current_user: User = Depends(get_current_user),
@@ -171,3 +173,55 @@ async def get_stock_price(symbol: str) -> StockResponse:
     except Exception as e:
         logger.error(f"Error fetching data for {symbol}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error fetching stock data")
+
+
+@router.get("/stocks/analysis/{symbol}", response_model=StockAnalysisResponse)
+async def get_stock_analysis(symbol: str) -> StockAnalysisResponse:
+    """
+    Get stock analysis data including portfolio value, volatility, profit over time, and investment value over time.
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        data = ticker.history(period="1y")
+
+        if data.empty:
+            raise HTTPException(status_code=404, detail="Stock symbol not found")
+        
+        data = data.reset_index()
+
+        data["Returns"] = data["Close"].pct_change()
+        data["Cumulative Returns"] = (1 + data["Returns"]).cumprod()
+        data["Portfolio Value"] = (
+            data["Cumulative Returns"] * 10000
+        )
+
+        dividends_data = ticker.dividends.reset_index()
+        if dividends_data.empty:
+            dividends = []
+        else:
+            dividends = dividends_data.to_dict(orient="records")
+
+        volatility = data["Returns"].std() * 252**0.5
+
+        response_data = StockAnalysisResponse(
+            historical_data=data.to_dict(orient="records"),
+            portfolio_value=data[["Date", "Portfolio Value"]].to_dict(orient="records"),
+            volatility=volatility,
+            profit_over_time=data[["Date", "Cumulative Returns"]].to_dict(
+                orient="records"
+            ),
+            investment_value_over_time=data[["Date", "Close"]].to_dict(
+                orient="records"
+            ),
+            asset_value_over_time=data[["Date", "Portfolio Value"]].to_dict(
+                orient="records"
+            ),
+            dividends=dividends,
+        )
+
+        return response_data
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching stock analysis data: {str(e)}"
+        )
