@@ -38,7 +38,9 @@ class APIClient:
             return None, None
 
     @staticmethod
-    def create_user(username: str, email: str, password: str) -> bool:
+    def create_user(
+        username: str, email: str, password: str
+    ) -> Tuple[bool, Optional[str]]:
         """
         Create a new user account.
 
@@ -48,13 +50,22 @@ class APIClient:
             password (str): New user's password.
 
         Returns:
-            bool: True if account creation was successful, False otherwise.
+            Tuple[bool, Optional[str]]: True if account creation was successful, False otherwise, along with an error message.
         """
-        response = requests.post(
-            f"{FASTAPI_URL}/users/",
-            json={"username": username, "email": email, "password": password},
-        )
-        return response.status_code == 200
+        try:
+            response = requests.post(
+                f"{FASTAPI_URL}/users/",
+                json={"username": username, "email": email, "password": password},
+            )
+            if response.status_code == 200:
+                return True, "Account created successfully! Please log in."
+            else:
+                error_message = response.json().get("detail", "Unknown error occurred.")
+                if "already registered" in error_message.lower():
+                    return False, "Username or email already registered."
+                return False, error_message
+        except Exception as e:
+            return False, str(e)
 
     @staticmethod
     def fetch_portfolio(token: str):

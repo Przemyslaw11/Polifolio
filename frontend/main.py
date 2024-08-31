@@ -1,4 +1,8 @@
-from components.stock import show_add_stock_tab, show_real_time_stock_prices_tab
+from components.stock import (
+    show_add_stock_tab,
+    show_real_time_stock_prices_tab,
+    show_analysis_tab,
+)
 from components.portfolio import show_view_portfolio_tab
 from utils.background_manager import set_background
 from config import BACKGROUND_IMAGE_PATH, logger
@@ -35,7 +39,13 @@ class StreamlitApp:
             st.rerun()
 
         tabs = st.tabs(
-            ["Start", "Add Stock", "Real-Time Stock Prices", "View Portfolio"]
+            [
+                "Start",
+                "Add Stock",
+                "Real-Time Stock Prices",
+                "Analysis",
+                "View Portfolio",
+            ]
         )
 
         with tabs[0]:
@@ -45,6 +55,8 @@ class StreamlitApp:
         with tabs[2]:
             show_real_time_stock_prices_tab(self.api_client)
         with tabs[3]:
+            show_analysis_tab()
+        with tabs[4]:
             show_view_portfolio_tab(self.api_client)
 
     def show_start_tab(self) -> None:
