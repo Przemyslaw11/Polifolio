@@ -134,3 +134,15 @@ class APIClient:
         if response.status_code == 200:
             return response.json()
         return None
+
+    def fetch_portfolio_analysis(self, token: str):
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            response = requests.get(
+                f"{FASTAPI_URL}/portfolio/analysis", headers=headers
+            )
+            response.raise_for_status()
+            return response
+        except requests.RequestException as e:
+            logger.error(f"Error fetching portfolio analysis: {str(e)}")
+            return None
