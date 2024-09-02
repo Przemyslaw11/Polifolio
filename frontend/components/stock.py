@@ -1,7 +1,11 @@
+from frontend.components.portfolio import PortfolioManager
 from frontend.api.client import APIClient
 from datetime import datetime, timedelta
+import plotly.graph_objects as go
 import plotly.express as px
 import streamlit as st
+from scipy import stats
+import yfinance as yf
 import pandas as pd
 import requests
 
@@ -71,74 +75,200 @@ def get_date_range(start_str, end_str):
     return pd.date_range(start=start_date, end=end_date)
 
 
-def show_analysis_tab():
-    ticker_symbol = st.text_input("Enter stock symbol", "AAPL")
+def create_chart(df, x, y, title, color):
+    fig = px.line(df, x=x, y=y, title=title)
+    fig.update_traces(line=dict(color=color, width=2))
+    fig.update_layout(
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#FFFFFF"),
+        title=dict(font=dict(size=24)),
+        xaxis=dict(
+            title_font=dict(size=18),
+            tickfont=dict(size=14),
+            gridcolor="rgba(255,255,255,0.1)",
+            showline=True,
+            linewidth=2,
+            linecolor="rgba(255,255,255,0.5)",
+        ),
+        yaxis=dict(
+            title_font=dict(size=18),
+            tickfont=dict(size=14),
+            gridcolor="rgba(255,255,255,0.1)",
+            showline=True,
+            linewidth=2,
+            linecolor="rgba(255,255,255,0.5)",
+        ),
+        legend=dict(font=dict(size=14)),
+    )
+    return fig
 
-    if st.button("Analyze Stock"):
-        try:
-            response = requests.get(
-                f"http://fastapi_app:8000/stocks/analysis/{ticker_symbol}"
+
+def show_analysis_tab(api_client: APIClient):
+    response = api_client.fetch_portfolio_analysis(st.session_state.token)
+    if response is None or response.status_code != 200:
+        st.error("Failed to fetch portfolio analysis data.")
+        return
+
+    try:
+        portfolio_analysis = response.json()
+    except requests.exceptions.JSONDecodeError:
+        st.error("Failed to parse portfolio analysis data.")
+        return
+
+    if not portfolio_analysis:
+        st.info("Your portfolio is empty. Add some stocks to see the analysis.")
+        return
+
+    tabs = ["Summary"] + list(portfolio_analysis.keys())
+    selected_tab = st.tabs(tabs)
+
+    with selected_tab[0]:
+        show_portfolio_summary(api_client)
+
+    for i, symbol in enumerate(portfolio_analysis.keys(), start=1):
+        with selected_tab[i]:
+            show_stock_analysis(api_client, symbol, portfolio_analysis[symbol])
+
+
+def show_portfolio_summary(api_client: APIClient):
+    st.subheader("Portfolio Summary")
+
+    portfolio_response = api_client.fetch_portfolio(st.session_state.token)
+
+    if not portfolio_response or not isinstance(portfolio_response, dict):
+        st.error("Failed to fetch or parse portfolio data.")
+        return
+
+    portfolio = portfolio_response.get("portfolio", [])
+
+    if not portfolio:
+        st.info("Your portfolio is empty. Add some stocks to see the summary.")
+        return
+
+    portfolio_manager = PortfolioManager()
+
+    total_value, total_gain_loss, total_percentage_gain_loss = (
+        portfolio_manager.calculate_portfolio_metrics(portfolio)
+    )
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Portfolio Value", f"${total_value:,.2f}")
+    col2.metric(
+        "Total Investment",
+        f"${sum(stock['purchase_price'] * stock['quantity'] for stock in portfolio):,.2f}",
+    )
+    col3.metric("Overall Profit/Loss", f"${total_gain_loss:,.2f}")
+    col4, col5 = st.columns(2)
+    col4.metric("Overall Percentage Gain/Loss", f"{total_percentage_gain_loss:.2f}%")
+
+    allocation_data = [
+        (stock["symbol"], stock["current_value"] / total_value * 100)
+        for stock in portfolio
+    ]
+    allocation_df = pd.DataFrame(allocation_data, columns=["Symbol", "Allocation"])
+
+    st.subheader("Stock Allocation")
+
+    fig = px.pie(
+        allocation_df,
+        names="Symbol",
+        values="Allocation",
+        labels={"Symbol": "Symbol", "Allocation": "Allocation (%)"},
+    )
+
+    fig.update_layout(
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#FFFFFF"),
+        legend=dict(font=dict(size=14)),
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def show_stock_analysis(api_client: APIClient, symbol, analysis):
+    if "error" in analysis:
+        st.error(f"Failed to fetch analysis for {symbol}: {analysis['error']}")
+        return
+
+    if "historical_data" not in analysis:
+        st.warning(f"No historical data available for {symbol}")
+        return
+
+    df = pd.DataFrame(analysis["historical_data"])
+    df["Date"] = pd.to_datetime(df["Date"], utc=True)
+
+    stock_price_data = api_client.fetch_stock_price(symbol)
+    if stock_price_data and "price" in stock_price_data:
+        current_price = stock_price_data["price"]
+    else:
+        st.error(f"Failed to fetch real-time price for {symbol}")
+        return
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Current Price", f"${current_price:.2f}")
+    col2.metric("Volatility", f"{analysis['volatility']:.2%}")
+
+    beta = calculate_beta(df)
+    col3.metric("Beta", f"{beta:.2f}" if beta is not None else "N/A")
+
+    fig = create_chart(
+        df,
+        "Date",
+        "Close",
+        f"Closing Price Over Time ({symbol})",
+        color="rgba(0,255,0,0.7)",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    if st.checkbox(f"Show Moving Averages ({symbol})"):
+        show_moving_averages(df, symbol)
+
+    fig_volume = create_chart(
+        df,
+        x="Date",
+        y="Volume",
+        title=f"Trading Volume ({symbol})",
+        color="rgba(0,255,0,0.7)",
+    )
+    st.plotly_chart(fig_volume, use_container_width=True)
+
+
+def calculate_beta(df):
+    try:
+        start_date = df["Date"].min()
+        end_date = df["Date"].max()
+
+        market_data = yf.download("^GSPC", start=start_date, end=end_date)
+        if market_data.empty:
+            return None
+
+        df = df.set_index("Date")
+        market_data = market_data["Close"].pct_change().dropna()
+
+        stock_returns = df["Close"].pct_change().dropna()
+        combined_data = pd.concat([stock_returns, market_data], axis=1).dropna()
+        combined_data.columns = ["stock_returns", "market_returns"]
+
+        if len(combined_data) > 1:
+            beta, _, _, _, _ = stats.linregress(
+                combined_data["market_returns"], combined_data["stock_returns"]
             )
-            response.raise_for_status()
-            data = response.json()
+            return beta
+        else:
+            return None
+    except Exception as e:
+        print(f"Error calculating beta: {e}")
+        return None
 
-            df = pd.DataFrame(data["historical_data"])
-            df["Date"] = pd.to_datetime(df["Date"])
 
-            st.subheader("Closing Price Over Time")
-            fig = px.line(df, x="Date", y="Close", title="Closing Price Over Time")
-            st.plotly_chart(fig)
-
-            portfolio_df = pd.DataFrame(data["portfolio_value"])
-            portfolio_df["Date"] = pd.to_datetime(portfolio_df["Date"])
-            st.subheader("Portfolio Value Over Time")
-            fig = px.line(
-                portfolio_df,
-                x="Date",
-                y="Portfolio Value",
-                title="Portfolio Value Over Time",
-            )
-            st.plotly_chart(fig)
-
-            st.subheader("Volatility of Returns")
-            st.write(f"Annualized Volatility: {data['volatility']:.2%}")
-
-            profit_df = pd.DataFrame(data["profit_over_time"])
-            profit_df["Date"] = pd.to_datetime(profit_df["Date"])
-            st.subheader("Profit Over Time")
-            fig = px.line(
-                profit_df, x="Date", y="Cumulative Returns", title="Profit Over Time"
-            )
-            st.plotly_chart(fig)
-
-            investment_df = pd.DataFrame(data["investment_value_over_time"])
-            investment_df["Date"] = pd.to_datetime(investment_df["Date"])
-            st.subheader("Investment Value Over Time")
-            fig = px.line(
-                investment_df, x="Date", y="Close", title="Investment Value Over Time"
-            )
-            st.plotly_chart(fig)
-
-            asset_df = pd.DataFrame(data["asset_value_over_time"])
-            asset_df["Date"] = pd.to_datetime(asset_df["Date"])
-            st.subheader("Asset Value Over Time")
-            fig = px.line(
-                asset_df, x="Date", y="Portfolio Value", title="Asset Value Over Time"
-            )
-            st.plotly_chart(fig)
-
-            dividends_df = pd.DataFrame(data["dividends"])
-            if not dividends_df.empty:
-                dividends_df["Date"] = pd.to_datetime(dividends_df["Date"])
-                st.subheader("Dividends Over Time")
-                fig = px.bar(
-                    dividends_df, x="Date", y="Dividends", title="Dividends Over Time"
-                )
-                st.plotly_chart(fig)
-            else:
-                st.info("No dividend data available for this stock.")
-
-        except requests.exceptions.RequestException as e:
-            st.error(f"Error fetching data: {e}")
-        except ValueError as e:
-            st.error(f"Data processing error: {e}")
+def show_moving_averages(df, symbol):
+    df["MA50"] = df["Close"].rolling(window=50).mean()
+    df["MA200"] = df["Close"].rolling(window=200).mean()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df["Date"], y=df["Close"], name="Close"))
+    fig.add_trace(go.Scatter(x=df["Date"], y=df["MA50"], name="50-day MA"))
+    fig.add_trace(go.Scatter(x=df["Date"], y=df["MA200"], name="200-day MA"))
+    fig.update_layout(title=f"Moving Averages for {symbol}")
+    st.plotly_chart(fig, use_container_width=True)

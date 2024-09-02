@@ -43,7 +43,7 @@ class StreamlitApp:
                 "Start",
                 "Add Stock",
                 "Real-Time Stock Prices",
-                "Analysis",
+                "Portfolio Analysis",
                 "View Portfolio",
             ]
         )
@@ -55,7 +55,7 @@ class StreamlitApp:
         with tabs[2]:
             show_real_time_stock_prices_tab(self.api_client)
         with tabs[3]:
-            show_analysis_tab()
+            show_analysis_tab(self.api_client)
         with tabs[4]:
             show_view_portfolio_tab(self.api_client)
 

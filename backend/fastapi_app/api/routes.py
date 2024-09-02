@@ -16,7 +16,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from datetime import timedelta
 import yfinance as yf
-import numpy as np
 import warnings
 import os
 
@@ -175,25 +174,39 @@ async def get_stock_price(symbol: str) -> StockResponse:
         raise HTTPException(status_code=500, detail="Error fetching stock data")
 
 
-@router.get("/stocks/analysis/{symbol}", response_model=StockAnalysisResponse)
-async def get_stock_analysis(symbol: str) -> StockAnalysisResponse:
-    """
-    Get stock analysis data including portfolio value, volatility, profit over time, and investment value over time.
-    """
+@router.get("/portfolio/analysis", response_model=dict)
+async def get_portfolio_analysis(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    portfolio_analysis = {}
+    user_portfolio = get_user_portfolio(current_user, db)
+
+    for stock in user_portfolio.portfolio:
+        analysis = await get_stock_analysis(
+            stock.symbol, stock.quantity, stock.purchase_price
+        )
+        portfolio_analysis[stock.symbol] = analysis
+
+    return portfolio_analysis
+
+
+async def get_stock_analysis(
+    symbol: str, quantity: float, purchase_price: float
+) -> StockAnalysisResponse:
     try:
         ticker = yf.Ticker(symbol)
-        data = ticker.history(period="1y")
+        data = ticker.history(period="5y")
 
         if data.empty:
             raise HTTPException(status_code=404, detail="Stock symbol not found")
-        
+
         data = data.reset_index()
 
         data["Returns"] = data["Close"].pct_change()
         data["Cumulative Returns"] = (1 + data["Returns"]).cumprod()
-        data["Portfolio Value"] = (
-            data["Cumulative Returns"] * 10000
-        )
+
+        initial_investment = quantity * purchase_price
+        data["Portfolio Value"] = data["Cumulative Returns"] * initial_investment
 
         dividends_data = ticker.dividends.reset_index()
         if dividends_data.empty:
