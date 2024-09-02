@@ -8,7 +8,9 @@ from scipy import stats
 import yfinance as yf
 import pandas as pd
 import requests
+import warnings
 
+warnings.filterwarnings("ignore", category=FutureWarning)  # yfinance
 
 def show_add_stock_tab(api_client: APIClient) -> None:
     """
