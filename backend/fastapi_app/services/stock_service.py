@@ -19,25 +19,34 @@ STOCK_PRICES_INTERVAL_UPDATES_SECONDS = int(
 
 
 class StockService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, updated_symbols: set):
         """
-        Initialize the StockService with a database session.
+        Initialize the StockService with a database session and a set to track updated symbols.
         args:
             - db: The database session
+            - updated_symbols: A set to track which stock symbols have been updated
         """
         self.db = db
+        self.updated_symbols = updated_symbols
 
     async def update_stock_price(self, stock: Stock) -> None:
         """
-        Update the price of a given stock.
+        Update the price of a given stock, but only if it hasn't been updated already in current job run.
         args:
             - stock: The Stock object to update
         return: None
         """
+        if stock.symbol in self.updated_symbols:
+            logger.info(
+                f"Skipping {stock.symbol} as it was already updated in current job run"
+            )
+            return
+
         logger.info(f"Updating price for {stock.symbol}")
         price = await self.fetch_stock_price(stock.symbol)
         if price is not None:
             self._save_stock_price(stock.symbol, price)
+            self.updated_symbols.add(stock.symbol)
 
     async def fetch_stock_price(self, symbol: str) -> Optional[float]:
         """
@@ -81,23 +90,31 @@ class StockService:
 
 async def update_stock_prices() -> None:
     """
-    Update the prices of all stocks in the database.
+    Update the prices of all unique stocks in the database.
     args: None
     return: None
     """
     logger.info("Starting stock price update")
     db = next(get_db())
-    stock_service = StockService(db)
+
+    updated_symbols = set()
+
+    stock_service = StockService(db=db, updated_symbols=updated_symbols)
+
     try:
-        stocks = db.query(Stock).all()
-        logger.info(f"Found {len(stocks)} stocks to update")
+        stocks = db.query(Stock).distinct(Stock.symbol).all()
+        logger.info(f"Found {len(stocks)} unique stocks to update")
+
         for stock in stocks:
             await stock_service.update_stock_price(stock)
+
         db.commit()
         logger.info("Stock price update completed successfully")
+
     except Exception as e:
         logger.error(f"Error in update_stock_prices: {str(e)}")
         db.rollback()
+
     finally:
         db.close()
 
