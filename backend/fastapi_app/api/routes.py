@@ -5,16 +5,21 @@ from fastapi_app.services.auth import (
     get_password_hash,
 )
 from fastapi_app.schemas.stock import StockCreate, StockResponse, StockAnalysisResponse
-from fastapi_app.schemas.portfolio import PortfolioResponse, PortfolioItem
+from fastapi_app.schemas.portfolio import (
+    PortfolioResponse,
+    PortfolioItem,
+    PortfolioHistoryResponse,
+)
 from fastapi import APIRouter, HTTPException, Depends, status
-from fastapi_app.models.user import User, Stock, StockPrice
+from fastapi_app.models.user import User, Stock, StockPrice, PortfolioHistory
 from fastapi_app.schemas.user import UserCreate, Token
 from fastapi.security import OAuth2PasswordRequestForm
 from shared.logging_config import setup_logging
 from fastapi_app.db.database import get_db
 from sqlalchemy.exc import IntegrityError
+from datetime import timedelta, datetime
 from sqlalchemy.orm import Session
-from datetime import timedelta
+from typing import List
 import yfinance as yf
 import warnings
 import os
@@ -154,6 +159,39 @@ def get_user_portfolio(
     return PortfolioResponse(user_id=user.id, portfolio=portfolio)
 
 
+@router.get("/portfolio/history", response_model=List[PortfolioHistoryResponse])
+async def get_portfolio_history(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    days: int = 30,
+):
+    """
+    Get the historical portfolio data for the current user.
+
+    args:
+        - current_user: The currently authenticated user
+        - db: The database session
+        - days: Number of days of history to retrieve (default: 30)
+
+    return: A list of PortfolioHistoryResponse objects containing historical portfolio data
+    """
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+
+    history = (
+        db.query(PortfolioHistory)
+        .filter(
+            PortfolioHistory.user_id == current_user.id,
+            PortfolioHistory.timestamp >= start_date,
+            PortfolioHistory.timestamp <= end_date,
+        )
+        .order_by(PortfolioHistory.timestamp.asc())
+        .all()
+    )
+
+    return [PortfolioHistoryResponse(**h.__dict__) for h in history]
+
+
 @router.get("/stocks/{symbol}", response_model=StockResponse)
 async def get_stock_price(symbol: str) -> StockResponse:
     """
@@ -190,12 +228,13 @@ async def get_portfolio_analysis(
     return portfolio_analysis
 
 
+
 async def get_stock_analysis(
     symbol: str, quantity: float, purchase_price: float
 ) -> StockAnalysisResponse:
     try:
         ticker = yf.Ticker(symbol)
-        data = ticker.history(period="5y")
+        data = ticker.history(period="1y")
 
         if data.empty:
             raise HTTPException(status_code=404, detail="Stock symbol not found")

@@ -21,7 +21,7 @@ class Stock(Base):
 
     id = Column(Integer, primary_key=True)
     symbol = Column(String, nullable=False)
-    quantity = Column(Float, nullable=False)
+    quantity = Column(Integer, nullable=False)
     purchase_price = Column(Float, nullable=False)
     purchase_date = Column(DateTime, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id"))
@@ -35,3 +35,17 @@ class StockPrice(Base):
     symbol = Column(String, nullable=False)
     price = Column(Float, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+
+class PortfolioHistory(Base):
+    __tablename__ = "portfolio_history"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    portfolio_value = Column(Float)
+    volatility = Column(Float)
+    profit = Column(Float)
+    investment_value = Column(Float)
+    asset_value = Column(Float)
+    dividends = Column(Float)
