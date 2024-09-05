@@ -12,6 +12,7 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)  # yfinance
 
+
 def show_add_stock_tab(api_client: APIClient) -> None:
     """
     Display the add stock tab and handle stock addition.
@@ -133,6 +134,34 @@ def show_analysis_tab(api_client: APIClient):
             show_stock_analysis(api_client, symbol, portfolio_analysis[symbol])
 
 
+def create_portfolio_history_chart(history_data):
+    df = pd.DataFrame(history_data)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(x=df["timestamp"], y=df["portfolio_value"], name="Portfolio Value")
+    )
+    fig.add_trace(
+        go.Scatter(x=df["timestamp"], y=df["investment_value"], name="Investment Value")
+    )
+    fig.add_trace(
+        go.Scatter(x=df["timestamp"], y=df["asset_value"], name="Asset Value")
+    )
+
+    fig.update_layout(
+        title="Portfolio History",
+        xaxis_title="Date",
+        yaxis_title="Value ($)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#FFFFFF"),
+        legend=dict(font=dict(size=14)),
+    )
+
+    return fig
+
+
 def show_portfolio_summary(api_client: APIClient):
     st.subheader("Portfolio Summary")
 
@@ -161,8 +190,20 @@ def show_portfolio_summary(api_client: APIClient):
         f"${sum(stock['purchase_price'] * stock['quantity'] for stock in portfolio):,.2f}",
     )
     col3.metric("Overall Profit/Loss", f"${total_gain_loss:,.2f}")
-    col4, col5 = st.columns(2)
+    col4, _ = st.columns(2)
     col4.metric("Overall Percentage Gain/Loss", f"{total_percentage_gain_loss:.2f}%")
+
+    history_data = api_client.fetch_portfolio_history(st.session_state.token)
+
+    if history_data:
+        if isinstance(history_data, list):
+            fig = create_portfolio_history_chart(history_data)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("Unexpected data format for history data.")
+            st.write(history_data)
+    else:
+        st.warning("Unable to fetch portfolio history data.")
 
     allocation_data = [
         (stock["symbol"], stock["current_value"] / total_value * 100)
@@ -208,12 +249,9 @@ def show_stock_analysis(api_client: APIClient, symbol, analysis):
         st.error(f"Failed to fetch real-time price for {symbol}")
         return
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     col1.metric("Current Price", f"${current_price:.2f}")
     col2.metric("Volatility", f"{analysis['volatility']:.2%}")
-
-    beta = calculate_beta(df)
-    col3.metric("Beta", f"{beta:.2f}" if beta is not None else "N/A")
 
     fig = create_chart(
         df,
