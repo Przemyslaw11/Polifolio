@@ -14,7 +14,7 @@ class UserStocksResponse(BaseModel):
 
 class StockCreate(BaseModel):
     symbol: str
-    quantity: float
+    quantity: int
     purchase_price: float
 
 
