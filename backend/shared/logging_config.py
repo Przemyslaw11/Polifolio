@@ -7,6 +7,7 @@ import pytz
 def setup_logging(log_file: str = "app.log") -> logging.Logger:
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
+    logging.basicConfig()
     logger.propagate = False
 
     if not logger.handlers:
@@ -30,5 +31,10 @@ def setup_logging(log_file: str = "app.log") -> logging.Logger:
 
         logger.addHandler(console_handler)
         logger.addHandler(file_handler)
+
+        sqlalchemy_logger = logging.getLogger("sqlalchemy.engine")
+        sqlalchemy_logger.setLevel(logging.DEBUG)
+        sqlalchemy_logger.addHandler(console_handler)
+        sqlalchemy_logger.addHandler(file_handler)
 
     return logger
