@@ -253,17 +253,68 @@ def show_stock_analysis(api_client: APIClient, symbol, analysis):
     col1.metric("Current Price", f"${current_price:.2f}")
     col2.metric("Volatility", f"{analysis['volatility']:.2%}")
 
-    fig = create_chart(
-        df,
-        "Date",
-        "Close",
-        f"Closing Price Over Time ({symbol})",
-        color="rgba(0,255,0,0.7)",
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    fig = go.Figure()
 
-    if st.checkbox(f"Show Moving Averages ({symbol})"):
-        show_moving_averages(df, symbol)
+    fig.add_trace(
+        go.Scatter(
+            x=df["Date"],
+            y=df["Close"],
+            mode="lines",
+            name="Close",
+            line=dict(color="rgba(0,255,0,0.7)", width=2),
+        )
+    )
+
+    show_ma = st.checkbox(f"Show Moving Averages ({symbol})")
+
+    if show_ma:
+        df["MA50"] = df["Close"].rolling(window=50).mean()
+        df["MA200"] = df["Close"].rolling(window=200).mean()
+
+        fig.add_trace(
+            go.Scatter(
+                x=df["Date"],
+                y=df["MA50"],
+                mode="lines",
+                name="50-day MA",
+                line=dict(color="rgba(255,165,0,0.7)", width=2),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df["Date"],
+                y=df["MA200"],
+                mode="lines",
+                name="200-day MA",
+                line=dict(color="rgba(0,0,255,0.7)", width=2),
+            )
+        )
+
+    fig.update_layout(
+        title=f"Closing Price Over Time ({symbol})",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#FFFFFF"),
+        xaxis=dict(
+            title_font=dict(size=18),
+            tickfont=dict(size=14),
+            gridcolor="rgba(255,255,255,0.1)",
+            showline=True,
+            linewidth=2,
+            linecolor="rgba(255,255,255,0.5)",
+        ),
+        yaxis=dict(
+            title_font=dict(size=18),
+            tickfont=dict(size=14),
+            gridcolor="rgba(255,255,255,0.1)",
+            showline=True,
+            linewidth=2,
+            linecolor="rgba(255,255,255,0.5)",
+        ),
+        legend=dict(font=dict(size=14)),
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
     fig_volume = create_chart(
         df,
@@ -303,12 +354,37 @@ def calculate_beta(df):
         return None
 
 
-def show_moving_averages(df, symbol):
-    df["MA50"] = df["Close"].rolling(window=50).mean()
-    df["MA200"] = df["Close"].rolling(window=200).mean()
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df["Date"], y=df["Close"], name="Close"))
-    fig.add_trace(go.Scatter(x=df["Date"], y=df["MA50"], name="50-day MA"))
-    fig.add_trace(go.Scatter(x=df["Date"], y=df["MA200"], name="200-day MA"))
-    fig.update_layout(title=f"Moving Averages for {symbol}")
-    st.plotly_chart(fig, use_container_width=True)
+# def show_moving_averages(df, symbol):
+#     df["MA50"] = df["Close"].rolling(window=50).mean()
+#     df["MA200"] = df["Close"].rolling(window=200).mean()
+
+#     fig = go.Figure()
+#     fig.add_trace(go.Scatter(x=df["Date"], y=df["Close"], name="Close"))
+#     fig.add_trace(go.Scatter(x=df["Date"], y=df["MA50"], name="50-day MA"))
+#     fig.add_trace(go.Scatter(x=df["Date"], y=df["MA200"], name="200-day MA"))
+
+#     fig.update_layout(
+#         title=f"Moving Averages for {symbol}",
+#         plot_bgcolor="rgba(0,0,0,0)",
+#         paper_bgcolor="rgba(0,0,0,0)",
+#         font=dict(color="#FFFFFF"),
+#         xaxis=dict(
+#             title_font=dict(size=18),
+#             tickfont=dict(size=14),
+#             gridcolor="rgba(255,255,255,0.1)",
+#             showline=True,
+#             linewidth=2,
+#             linecolor="rgba(255,255,255,0.5)",
+#         ),
+#         yaxis=dict(
+#             title_font=dict(size=18),
+#             tickfont=dict(size=14),
+#             gridcolor="rgba(255,255,255,0.1)",
+#             showline=True,
+#             linewidth=2,
+#             linecolor="rgba(255,255,255,0.5)",
+#         ),
+#         legend=dict(font=dict(size=14)),
+#     )
+
+#     st.plotly_chart(fig, use_container_width=True)
