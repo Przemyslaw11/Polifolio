@@ -1,7 +1,9 @@
 from typing import Tuple, Optional, Dict, Any, List
-from frontend.config import FASTAPI_URL, logger
-import streamlit as st
 import requests
+
+import streamlit as st
+
+from frontend.config import FASTAPI_URL, logger
 
 
 class APIClient:
@@ -91,18 +93,21 @@ class APIClient:
             return None
 
     @staticmethod
-    def fetch_portfolio_history(token: str, days: int = 30) -> Optional[List[Dict[str, Any]]]:
+    def fetch_portfolio_history(
+        token: str, days: int = 30
+    ) -> Optional[List[Dict[str, Any]]]:
         headers = {"Authorization": f"Bearer {token}"}
         try:
             url = f"{FASTAPI_URL}/portfolio/history?days={days}"
             logger.info(f"Fetching portfolio history from URL: {url}")
             logger.info(f"Headers: {headers}")
-            
+
             response = requests.get(url, headers=headers)
-            
-            logger.info(f"Portfolio history response status code: {response.status_code}")
-            logger.info(f"Portfolio history response content: {response.text}")
-            
+
+            logger.info(
+                f"Portfolio history response status code: {response.status_code}"
+            )
+
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -155,7 +160,8 @@ class APIClient:
             return response.json()
         return None
 
-    def fetch_portfolio_analysis(self, token: str):
+    @staticmethod
+    def fetch_portfolio_analysis(token: str):
         headers = {"Authorization": f"Bearer {token}"}
         try:
             response = requests.get(
