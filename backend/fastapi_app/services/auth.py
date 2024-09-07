@@ -1,14 +1,16 @@
-from fastapi import HTTPException, Depends, status
-from fastapi.security import OAuth2PasswordBearer
-from fastapi_app.schemas.user import TokenData
-from fastapi_app.db.database import get_db
-from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from fastapi_app.models.user import User
-from sqlalchemy.orm import Session
-from jose import JWTError, jwt
 from typing import Optional
 import os
+
+from fastapi import HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordBearer
+from passlib.context import CryptContext
+from sqlalchemy.orm import Session
+from jose import JWTError, jwt
+
+from fastapi_app.schemas.user import TokenData
+from fastapi_app.db.database import get_db
+from fastapi_app.models.user import User
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")

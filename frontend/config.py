@@ -1,7 +1,8 @@
-from shared.logging_config import setup_logging
 from dotenv import load_dotenv
 import sys
 import os
+
+from shared.logging_config import setup_logging
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(project_root)

@@ -1,3 +1,15 @@
+from datetime import timedelta, datetime
+from typing import List
+import warnings
+import os
+
+from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+import yfinance as yf
+
+
 from fastapi_app.services.auth import (
     authenticate_user,
     create_access_token,
@@ -10,20 +22,10 @@ from fastapi_app.schemas.portfolio import (
     PortfolioItem,
     PortfolioHistoryResponse,
 )
-from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi_app.models.user import User, Stock, StockPrice, PortfolioHistory
 from fastapi_app.schemas.user import UserCreate, Token
-from fastapi.security import OAuth2PasswordRequestForm
-from shared.logging_config import setup_logging
 from fastapi_app.db.database import get_db
-from sqlalchemy.exc import IntegrityError
-from datetime import timedelta, datetime
-from sqlalchemy.orm import Session
-from typing import List
-import yfinance as yf
-import warnings
-import os
-
+from shared.logging_config import setup_logging
 
 logger = setup_logging()
 router = APIRouter()

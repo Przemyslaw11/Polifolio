@@ -1,16 +1,16 @@
+from typing import Optional
+import os
+
 from apscheduler.events import JobExecutionEvent, JobSubmissionEvent
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from apscheduler.schedulers.background import BackgroundScheduler
+from sqlalchemy.orm import Session
+import yfinance as yf
+import asyncio
+
 from fastapi_app.models.user import User, Stock, StockPrice, PortfolioHistory
 from shared.logging_config import setup_logging
 from fastapi_app.db.database import get_db
-from sqlalchemy.orm import Session
-from sqlalchemy.orm import aliased
-from sqlalchemy import func
-from typing import Optional
-import yfinance as yf
-import asyncio
-import os
 
 scheduler = BackgroundScheduler()
 logger = setup_logging()

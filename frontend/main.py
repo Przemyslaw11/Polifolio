@@ -1,3 +1,5 @@
+import streamlit as st
+
 from components.stock import (
     show_add_stock_tab,
     show_real_time_stock_prices_tab,
@@ -9,7 +11,6 @@ from utils.background_manager import set_background
 from config import BACKGROUND_IMAGE_PATH, logger
 from components.login import show_login_page
 from api.client import APIClient
-import streamlit as st
 
 
 class StreamlitApp:

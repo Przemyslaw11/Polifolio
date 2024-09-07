@@ -1,9 +1,11 @@
+from typing import Dict
+
+from fastapi import FastAPI
+
 from fastapi_app.services.stock_service import scheduler
 from shared.logging_config import setup_logging
 from fastapi_app.db.database import init_db
 from fastapi_app.api.routes import router
-from fastapi import FastAPI
-from typing import Dict
 
 logger = setup_logging()
 app = FastAPI()
