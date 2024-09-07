@@ -1,9 +1,13 @@
-from frontend.config import STOCK_PRICES_INTERVAL_UPDATES_SECONDS
-from frontend.api.client import APIClient
 from typing import List, Dict, Tuple
+from datetime import datetime
+import time
+
+import yfinance as yf
 import streamlit as st
 import pandas as pd
-import time
+
+from frontend.config import STOCK_PRICES_INTERVAL_UPDATES_SECONDS
+from frontend.api.client import APIClient
 
 
 class PortfolioManager:
@@ -12,13 +16,7 @@ class PortfolioManager:
         portfolio: List[Dict],
     ) -> Tuple[float, float, float]:
         """
-        Calculate portfolio metrics based on the given portfolio data.
-
-        Args:
-            portfolio (List[Dict]): List of dictionaries containing stock data.
-
-        Returns:
-            Tuple[float, float, float]: Total value, total gain/loss, and total percentage gain/loss.
+        Calculate total value, gain/loss, and percentage gain/loss of the portfolio.
         """
         total_value = sum(stock["current_value"] for stock in portfolio)
         total_gain_loss = sum(stock["gain_loss"] for stock in portfolio)
@@ -34,13 +32,7 @@ class PortfolioManager:
     @staticmethod
     def format_portfolio_dataframe(portfolio: List[Dict]) -> pd.DataFrame:
         """
-        Format the portfolio data into a pandas DataFrame.
-
-        Args:
-            portfolio (List[Dict]): List of dictionaries containing stock data.
-
-        Returns:
-            pd.DataFrame: Formatted DataFrame containing portfolio information.
+        Format portfolio data into a pandas DataFrame for display.
         """
         df = pd.DataFrame(portfolio)
         df.columns = [
@@ -51,10 +43,17 @@ class PortfolioManager:
             "Current Value",
             "Profit/Loss",
         ]
-
         df["Percentage Gain/Loss (%)"] = (
             (df["Profit/Loss"] / (df["Quantity"] * df["Purchase Price"])) * 100
         ).round(2)
+        df = PortfolioManager.format_currency_columns(df)
+        return df
+
+    @staticmethod
+    def format_currency_columns(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Format columns related to prices, values, and percentages for readability.
+        """
         df["Quantity"] = df["Quantity"].astype(int)
         df["Purchase Price"] = df["Purchase Price"].apply(lambda x: f"${x:,.2f}")
         df["Current Price"] = df["Current Price"].apply(lambda x: f"${x:,.2f}")
@@ -65,16 +64,58 @@ class PortfolioManager:
         df["Percentage Gain/Loss (%)"] = df["Percentage Gain/Loss (%)"].apply(
             lambda x: f"{x:.2f}%" if x >= 0 else f"-{abs(x):.2f}%"
         )
-
         return df
+
+    @staticmethod
+    def calculate_sharpe_ratio(
+        portfolio_returns: pd.Series, risk_free_rate: float = 0.01
+    ) -> float:
+        excess_returns = portfolio_returns.mean() - risk_free_rate
+        return excess_returns / portfolio_returns.std()
+
+    @staticmethod
+    def calculate_sortino_ratio(
+        portfolio_returns: pd.Series, risk_free_rate: float = 0.01
+    ) -> float:
+        downside_risk = portfolio_returns[portfolio_returns < 0].std()
+        excess_returns = portfolio_returns.mean() - risk_free_rate
+        return excess_returns / downside_risk if downside_risk > 0 else None
+
+
+def display_portfolio(
+    portfolio_manager: PortfolioManager, portfolio_data: Dict
+) -> None:
+    """
+    Display the portfolio data and metrics in the Streamlit app.
+    """
+    portfolio = portfolio_data.get("portfolio", [])
+    if portfolio:
+        df = portfolio_manager.format_portfolio_dataframe(portfolio)
+        total_value, total_gain_loss, total_percentage_gain_loss = (
+            portfolio_manager.calculate_portfolio_metrics(portfolio)
+        )
+
+        st.dataframe(df, hide_index=True)
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Portfolio Value", f"${total_value:,.2f}")
+        col2.metric(
+            "Overall Profit/Loss",
+            f"${total_gain_loss:,.2f}",
+            delta=f"{total_gain_loss:,.2f}",
+        )
+        col3.metric(
+            "Overall Percentage Gain/Loss",
+            f"{total_percentage_gain_loss:.2f}%",
+            delta=f"{total_percentage_gain_loss:.2f}%",
+        )
+    else:
+        st.warning("No stocks in the portfolio.")
 
 
 def show_view_portfolio_tab(api_client: APIClient) -> None:
     """
-    Display the view portfolio tab and handle portfolio data fetching and display.
-
-    Args:
-        api_client (APIClient): The API client instance for making requests.
+    Display the portfolio tab, fetch portfolio data, and show metrics.
     """
     portfolio_manager = PortfolioManager()
     placeholder = st.empty()
@@ -84,36 +125,8 @@ def show_view_portfolio_tab(api_client: APIClient) -> None:
 
         with placeholder.container():
             if portfolio_data:
-                portfolio = portfolio_data.get("portfolio", [])
-                if portfolio:
-                    df = portfolio_manager.format_portfolio_dataframe(portfolio)
-                    total_value, total_gain_loss, total_percentage_gain_loss = (
-                        portfolio_manager.calculate_portfolio_metrics(portfolio)
-                    )
-
-                    st.dataframe(df, hide_index=True)
-
-                    col1, col2, col3 = st.columns(3)
-
-                    with col1:
-                        st.metric(
-                            label="Total Portfolio Value", value=f"${total_value:,.2f}"
-                        )
-                    with col2:
-                        st.metric(
-                            label="Overall Profit/Loss",
-                            value=f"${total_gain_loss:,.2f}",
-                            delta=f"${total_gain_loss:,.2f}",
-                        )
-                    with col3:
-                        st.metric(
-                            label="Overall Percentage Gain/Loss",
-                            value=f"{total_percentage_gain_loss:.2f}%",
-                            delta=f"{total_percentage_gain_loss:.2f}%",
-                        )
-                else:
-                    st.warning("No stocks in the portfolio.")
+                display_portfolio(portfolio_manager, portfolio_data)
             else:
                 st.error("Failed to fetch portfolio")
 
-        time.sleep(STOCK_PRICES_INTERVAL_UPDATES_SECONDS)
+        time.sleep(int(STOCK_PRICES_INTERVAL_UPDATES_SECONDS / 2))
