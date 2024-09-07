@@ -1,8 +1,10 @@
+import os
+
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import create_engine
+
 from shared.logging_config import setup_logging
 from fastapi_app.models.user import Base
-from sqlalchemy import create_engine
-import os
 
 logger = setup_logging()
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
