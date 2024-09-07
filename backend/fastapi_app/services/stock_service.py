@@ -294,6 +294,7 @@ scheduler.add_job(
     func=lambda: asyncio.run(update_stock_prices()),
     trigger="interval",
     seconds=STOCK_PRICES_INTERVAL_UPDATES_SECONDS,
+    max_instances=2,
 )
 
 scheduler.add_job(
@@ -301,4 +302,5 @@ scheduler.add_job(
     func=lambda: asyncio.run(update_portfolio_history()),
     trigger="interval",
     seconds=PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS,
+    max_instances=1,
 )
