@@ -4,8 +4,9 @@ import os
 
 from fastapi import HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.ext.asyncio import AsyncSession
 from passlib.context import CryptContext
-from sqlalchemy.orm import Session
+from sqlalchemy.future import select
 from jose import JWTError, jwt
 
 from fastapi_app.schemas.user import TokenData
@@ -21,36 +22,19 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """
-    Verify a plain password against a hashed password.
-    args:
-        - plain_password: The plain text password to verify
-        - hashed_password: The hashed password to compare against
-    return: True if the password is correct, False otherwise
-    """
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
-    """
-    Generate a hash for the given password.
-    args:
-        - password: The plain text password to hash
-    return: The hashed password
-    """
     return pwd_context.hash(password)
 
 
-def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
-    """
-    Authenticate a user with the given username and password.
-    args:
-        - db: The database session
-        - username: The username of the user to authenticate
-        - password: The password of the user to authenticate
-    return: The authenticated User object if successful, False otherwise
-    """
-    user = db.query(User).filter(User.username == username).first()
+async def authenticate_user(
+    db: AsyncSession, username: str, password: str
+) -> Optional[User]:
+    stmt = select(User).filter(User.username == username)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
     if not user:
         return False
     if not verify_password(password, user.hashed_password):
@@ -59,13 +43,6 @@ def authenticate_user(db: Session, username: str, password: str) -> Optional[Use
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """
-    Create an access token for the given data.
-    args:
-        - data: The data to encode in the token
-        - expires_delta: Optional expiration time for the token
-    return: The encoded JWT token
-    """
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -77,15 +54,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+    token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
 ) -> User:
-    """
-    Get the current authenticated user based on the provided token.
-    args:
-        - token: The JWT token to decode
-        - db: The database session
-    return: The authenticated User object
-    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -97,7 +67,9 @@ async def get_current_user(
         token_data = TokenData(username=username)
     except JWTError:
         raise credentials_exception
-    user = db.query(User).filter(User.username == token_data.username).first()
+    stmt = select(User).filter(User.username == token_data.username)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
     if user is None:
         raise credentials_exception
     return user

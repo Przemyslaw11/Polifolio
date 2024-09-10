@@ -9,3 +9,4 @@ python-jose==3.3.0
 python-multipart==0.0.9
 apscheduler==3.10.4
 yfinance==0.2.31
+asyncpg==0.29.0

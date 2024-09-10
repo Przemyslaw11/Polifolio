@@ -141,12 +141,6 @@ def create_chart(df: pd.DataFrame, x: str, y: str, title: str, color: str) -> go
 
 
 def show_analysis_tab(api_client: APIClient) -> None:
-    """
-    Display the analysis tab and handle portfolio analysis.
-
-    Args:
-        api_client (APIClient): The API client instance for making requests.
-    """
     response = api_client.fetch_portfolio_analysis(st.session_state.token)
     if response is None or response.status_code != 200:
         st.error("Failed to fetch portfolio analysis data.")
@@ -226,13 +220,21 @@ def create_portfolio_history_chart(history_data: list) -> go.Figure:
     return fig
 
 
-def show_portfolio_summary(api_client: APIClient) -> None:
-    """
-    Display the portfolio summary and handle data fetching and calculation.
+@st.cache_data(ttl=3600)
+def fetch_stock_data(symbol: str, start_date: str, end_date: str):
+    try:
+        data = yf.download(symbol, start=start_date, end=end_date)
+        if not data.empty:
+            return data
+        else:
+            st.warning(f"No data available for {symbol}")
+            return None
+    except Exception as e:
+        st.warning(f"Failed to download data for {symbol}: {str(e)}")
+        return None
 
-    Args:
-        api_client (APIClient): The API client instance for making requests.
-    """
+
+def show_portfolio_summary(api_client: APIClient) -> None:
     st.subheader("Portfolio Summary")
 
     portfolio_response = api_client.fetch_portfolio(st.session_state.token)
@@ -271,12 +273,15 @@ def show_portfolio_summary(api_client: APIClient) -> None:
         historical_data = []
         stock_returns = pd.DataFrame()
 
+        start_date = "2020-01-01"
+        end_date = datetime.now().strftime("%Y-%m-%d")
+
         for stock in portfolio:
             symbol = stock["symbol"]
             try:
-                data = yf.download(symbol, start="2020-01-01", end=datetime.now())
+                data = fetch_stock_data(symbol, start_date, end_date)
 
-                if not data.empty:
+                if data is not None:
                     stock_returns[symbol] = data["Close"].pct_change().dropna()
                     historical_data.append(data)
                 else:
