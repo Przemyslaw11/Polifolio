@@ -2,12 +2,11 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 import os
 
-from apscheduler.events import JobExecutionEvent, JobSubmissionEvent
+from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import joinedload
 from sqlalchemy.future import select
-from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import yfinance as yf
 import asyncio
@@ -15,6 +14,7 @@ import asyncio
 from fastapi_app.models.user import User, Stock, StockPrice, PortfolioHistory
 from fastapi_app.schemas.stock import StockAnalysisResponse
 from shared.logging_config import setup_logging
+from fastapi_app.db.database import AsyncSessionLocal
 from fastapi_app.db.database import get_db
 
 scheduler = AsyncIOScheduler()
@@ -29,8 +29,7 @@ PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS = int(
 
 
 class StockService:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self):
         self.updated_symbols = set()
 
     async def update_stock_price(self, stock: Stock) -> None:
@@ -61,10 +60,12 @@ class StockService:
             logger.error(f"Error fetching price for {symbol}: {str(e)}")
         return None
 
-    async def _save_stock_price(self, symbol: str, price: float) -> None:
+
+async def _save_stock_price(self, symbol: str, price: float) -> None:
+    async with AsyncSessionLocal() as db:
         try:
             stmt = select(StockPrice).filter(StockPrice.symbol == symbol)
-            result = await self.db.execute(stmt)
+            result = await db.execute(stmt)
             existing_price = result.scalar_one_or_none()
 
             if existing_price:
@@ -73,19 +74,19 @@ class StockService:
                 logger.info(f"Updated price for {symbol}")
             else:
                 new_price = StockPrice(symbol=symbol, price=price)
-                self.db.add(new_price)
+                db.add(new_price)
                 logger.info(f"Added new price entry for {symbol}")
 
-            await self.db.commit()
+            await db.commit()
         except Exception as e:
             logger.error(f"Error saving stock price for {symbol}: {str(e)}")
-            await self.db.rollback()
+            await db.rollback()
 
 
 async def update_stock_prices():
     logger.info("Starting stock price update")
-    async for db in get_db():
-        stock_service = StockService(db=db)
+    stock_service = StockService()
+    async with AsyncSessionLocal() as db:
         try:
             stmt = select(Stock.symbol).distinct()
             result = await db.execute(stmt)
@@ -100,8 +101,6 @@ async def update_stock_prices():
             logger.info("Stock price update completed successfully")
         except Exception as e:
             logger.error(f"Error during stock price update: {str(e)}")
-        finally:
-            await db.close()
 
 
 def calculate_portfolio_volatility(portfolio_items: List[tuple]) -> float:
@@ -290,23 +289,26 @@ async def analyze_stock(
         )
 
 
-async def job_listener(event):
-    if isinstance(event, JobExecutionEvent):
-        if event.exception:
-            logger.error(f"Job {event.job_id} failed")
-        else:
-            logger.info(f"Job {event.job_id} completed successfully")
-    elif isinstance(event, JobSubmissionEvent):
-        logger.info(f"Job submitted: {event.job_id}")
+def job_listener(event):
+    if event.code == EVENT_JOB_EXECUTED:
+        logger.info(f"Job {event.job_id} executed successfully")
+    elif event.code == EVENT_JOB_ERROR:
+        logger.error(f"Job {event.job_id} failed with exception: {event.exception}")
 
 
-scheduler.add_listener(job_listener)
+def start_scheduler():
+    scheduler.start()
+
+
+scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
 
 scheduler.add_job(
     update_stock_prices,
     trigger=IntervalTrigger(seconds=STOCK_PRICES_INTERVAL_UPDATES_SECONDS),
     id="update_stock_prices",
     max_instances=1,
+    coalesce=True,
+    misfire_grace_time=None,
 )
 
 scheduler.add_job(
@@ -314,4 +316,5 @@ scheduler.add_job(
     trigger=IntervalTrigger(seconds=PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS),
     id="update_portfolio_history",
     max_instances=1,
+    coerce=True,
 )
