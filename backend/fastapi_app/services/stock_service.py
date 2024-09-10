@@ -2,9 +2,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 import os
 
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import joinedload
 from sqlalchemy.future import select
 from fastapi import HTTPException
@@ -19,13 +17,6 @@ from fastapi_app.db.database import get_db
 
 scheduler = AsyncIOScheduler()
 logger = setup_logging()
-
-STOCK_PRICES_INTERVAL_UPDATES_SECONDS = int(
-    os.getenv("STOCK_PRICES_INTERVAL_UPDATES_SECONDS", 60)
-)
-PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS = int(
-    os.getenv("PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS", 3600)
-)
 
 
 class StockService:
@@ -60,27 +51,26 @@ class StockService:
             logger.error(f"Error fetching price for {symbol}: {str(e)}")
         return None
 
+    async def _save_stock_price(self, symbol: str, price: float) -> None:
+        async with AsyncSessionLocal() as db:
+            try:
+                stmt = select(StockPrice).filter(StockPrice.symbol == symbol)
+                result = await db.execute(stmt)
+                existing_price = result.scalar_one_or_none()
 
-async def _save_stock_price(self, symbol: str, price: float) -> None:
-    async with AsyncSessionLocal() as db:
-        try:
-            stmt = select(StockPrice).filter(StockPrice.symbol == symbol)
-            result = await db.execute(stmt)
-            existing_price = result.scalar_one_or_none()
+                if existing_price:
+                    existing_price.price = price
+                    existing_price.timestamp = datetime.utcnow()
+                    logger.info(f"Updated price for {symbol}")
+                else:
+                    new_price = StockPrice(symbol=symbol, price=price)
+                    db.add(new_price)
+                    logger.info(f"Added new price entry for {symbol}")
 
-            if existing_price:
-                existing_price.price = price
-                existing_price.timestamp = datetime.utcnow()
-                logger.info(f"Updated price for {symbol}")
-            else:
-                new_price = StockPrice(symbol=symbol, price=price)
-                db.add(new_price)
-                logger.info(f"Added new price entry for {symbol}")
-
-            await db.commit()
-        except Exception as e:
-            logger.error(f"Error saving stock price for {symbol}: {str(e)}")
-            await db.rollback()
+                await db.commit()
+            except Exception as e:
+                logger.error(f"Error saving stock price for {symbol}: {str(e)}")
+                await db.rollback()
 
 
 async def update_stock_prices():
@@ -287,34 +277,3 @@ async def analyze_stock(
         raise HTTPException(
             status_code=500, detail=f"Error fetching stock analysis data: {str(e)}"
         )
-
-
-def job_listener(event):
-    if event.code == EVENT_JOB_EXECUTED:
-        logger.info(f"Job {event.job_id} executed successfully")
-    elif event.code == EVENT_JOB_ERROR:
-        logger.error(f"Job {event.job_id} failed with exception: {event.exception}")
-
-
-def start_scheduler():
-    scheduler.start()
-
-
-scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
-
-scheduler.add_job(
-    update_stock_prices,
-    trigger=IntervalTrigger(seconds=STOCK_PRICES_INTERVAL_UPDATES_SECONDS),
-    id="update_stock_prices",
-    max_instances=1,
-    coalesce=True,
-    misfire_grace_time=None,
-)
-
-scheduler.add_job(
-    update_portfolio_history,
-    trigger=IntervalTrigger(seconds=PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS),
-    id="update_portfolio_history",
-    max_instances=1,
-    coerce=True,
-)

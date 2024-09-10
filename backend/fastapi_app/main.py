@@ -2,7 +2,7 @@ from typing import Dict
 
 from fastapi import FastAPI
 
-from fastapi_app.services.stock_service import start_scheduler
+from fastapi_app.services.scheduler_service import start_scheduler
 from fastapi_app.services.stock_service import scheduler
 from shared.logging_config import setup_logging
 from fastapi_app.db.database import init_db
