@@ -16,6 +16,10 @@ PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS = int(
     os.getenv("PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS", 3600)
 )
 
+MISFIRE_GRACE_TIME_SECONDS = (
+    STOCK_PRICES_INTERVAL_UPDATES_SECONDS + STOCK_PRICES_INTERVAL_UPDATES_SECONDS
+) // 2
+
 
 def job_listener(event):
     if event.code == EVENT_JOB_EXECUTED:
@@ -33,6 +37,7 @@ def configure_scheduler():
         id="update_stock_prices",
         max_instances=1,
         coalesce=True,
+        misfire_grace_time=MISFIRE_GRACE_TIME_SECONDS,
     )
 
     scheduler.add_job(
@@ -41,6 +46,7 @@ def configure_scheduler():
         id="update_portfolio_history",
         max_instances=1,
         coalesce=True,
+        misfire_grace_time=MISFIRE_GRACE_TIME_SECONDS,
     )
 
     scheduler.start()
