@@ -14,14 +14,9 @@ app.include_router(router)
 
 
 @app.on_event("startup")
-async def startup_event() -> None:
-    """
-    Initialize the database and start the scheduler on application startup.
-    args: None
-    return: None
-    """
+async def startup_event():
     logger.info("Starting up FastAPI application")
-    init_db()
+    await init_db()
     if not scheduler.running:
         scheduler.start()
 
@@ -49,12 +44,4 @@ async def root() -> Dict[str, str]:
 
 
 async def scheduler_status() -> Dict[str, bool | int]:
-    """
-    Get the current status of the scheduler.
-    args: None
-    return: A dictionary containing the scheduler's running status and job count
-    """
-
-
-async def scheduler_status():
     return {"is_running": scheduler.running, "job_count": len(scheduler.get_jobs())}
