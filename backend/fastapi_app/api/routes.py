@@ -1,13 +1,13 @@
-from datetime import timedelta, datetime
+from datetime import timedelta
 from typing import List
 import warnings
 import os
 
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-import yfinance as yf
 
 
 from fastapi_app.services.auth import (
@@ -19,10 +19,14 @@ from fastapi_app.services.auth import (
 from fastapi_app.schemas.stock import StockCreate, StockResponse, StockAnalysisResponse
 from fastapi_app.schemas.portfolio import (
     PortfolioResponse,
-    PortfolioItem,
     PortfolioHistoryResponse,
 )
-from fastapi_app.models.user import User, Stock, StockPrice, PortfolioHistory
+from fastapi_app.services.portfolio_service import (
+    get_portfolio_history,
+    get_user_portfolio,
+)
+from fastapi_app.services.stock_service import analyze_stock, get_stock_data
+from fastapi_app.models.user import User, Stock
 from fastapi_app.schemas.user import UserCreate, Token
 from fastapi_app.db.database import get_db
 from shared.logging_config import setup_logging
@@ -36,8 +40,9 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 15))
 
 
 @router.post("/users/", response_model=UserCreate)
-def create_user(user: UserCreate, db: Session = Depends(get_db)) -> UserCreate:
-    """Create a new user in the database."""
+async def create_user(
+    user: UserCreate, db: AsyncSession = Depends(get_db)
+) -> UserCreate:
     try:
         db_user = User(
             username=user.username,
@@ -45,11 +50,11 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)) -> UserCreate:
             hashed_password=get_password_hash(user.password),
         )
         db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
+        await db.commit()
+        await db.refresh(db_user)
         return UserCreate(username=db_user.username, email=db_user.email, password="")
     except IntegrityError as e:
-        db.rollback()
+        await db.rollback()
         if "unique constraint" in str(e.orig):
             raise HTTPException(
                 status_code=400, detail="Username or email already registered."
@@ -58,7 +63,8 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)) -> UserCreate:
             status_code=500, detail="An unexpected database error occurred."
         )
     except Exception as e:
-        db.rollback()
+        await db.rollback()
+        logger.error(f"Error creating user: {str(e)}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 
@@ -66,14 +72,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)) -> UserCreate:
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ) -> Token:
-    """
-    Log in a user and return an access token.
-    args:
-        - form_data: OAuth2PasswordRequestForm containing username and password
-        - db: The database session
-    return: A Token object containing access token and token type
-    """
-    user = authenticate_user(db, form_data.username, form_data.password)
+    user = await authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -88,127 +87,45 @@ async def login_for_access_token(
 
 
 @router.post("/users/{user_id}/stocks/", response_model=StockCreate)
-def add_stock(
+async def add_stock(
     user_id: int,
     stock: StockCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Stock:
-    """
-    Add a stock for a user.
-    args:
-        - user_id: ID of the user to add the stock for
-        - stock: StockCreate model containing stock details
-        - current_user: The currently authenticated user
-        - db: The database session
-    return: The added Stock object
-    """
     if current_user.id != user_id:
         raise HTTPException(
             status_code=403, detail="Not authorized to add stocks for this user"
         )
     db_stock = Stock(**stock.dict(), user_id=user_id)
     db.add(db_stock)
-    db.commit()
-    db.refresh(db_stock)
+    await db.commit()
+    await db.refresh(db_stock)
     return db_stock
 
 
 @router.get("/portfolio", response_model=PortfolioResponse)
-def get_user_portfolio(
+async def get_portfolio(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PortfolioResponse:
-    """
-    Get the portfolio of the currently authenticated user.
-
-    args:
-        - current_user: The currently authenticated user
-        - db: The database session
-
-    return: A PortfolioResponse model containing the user ID and a list of PortfolioItem objects.
-    """
-    user = db.query(User).filter(User.id == current_user.id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    portfolio = []
-    for stock in user.stocks:
-        latest_price = (
-            db.query(StockPrice)
-            .filter(StockPrice.symbol == stock.symbol)
-            .order_by(StockPrice.timestamp.desc())
-            .first()
-        )
-        if latest_price:
-            current_value = round(stock.quantity * latest_price.price, 3)
-            gain_loss = round(
-                current_value - (stock.quantity * stock.purchase_price), 3
-            )
-            portfolio.append(
-                PortfolioItem(
-                    symbol=stock.symbol,
-                    quantity=stock.quantity,
-                    purchase_price=stock.purchase_price,
-                    current_price=latest_price.price,
-                    current_value=current_value,
-                    gain_loss=gain_loss,
-                )
-            )
-        else:
-            logger.warning(f"No latest price found for stock: {stock.symbol}")
-
-    return PortfolioResponse(user_id=user.id, portfolio=portfolio)
+    return await get_user_portfolio(current_user, db)
 
 
 @router.get("/portfolio/history", response_model=List[PortfolioHistoryResponse])
-async def get_portfolio_history(
+async def get_portfolio_history_route(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     days: int = 30,
-):
-    """
-    Get the historical portfolio data for the current user.
-
-    args:
-        - current_user: The currently authenticated user
-        - db: The database session
-        - days: Number of days of history to retrieve (default: 30)
-
-    return: A list of PortfolioHistoryResponse objects containing historical portfolio data
-    """
-    end_date = datetime.utcnow()
-    start_date = end_date - timedelta(days=days)
-
-    history = (
-        db.query(PortfolioHistory)
-        .filter(
-            PortfolioHistory.user_id == current_user.id,
-            PortfolioHistory.timestamp >= start_date,
-            PortfolioHistory.timestamp <= end_date,
-        )
-        .order_by(PortfolioHistory.timestamp.asc())
-        .all()
-    )
-
-    return [PortfolioHistoryResponse(**h.__dict__) for h in history]
+) -> List[PortfolioHistoryResponse]:
+    return await get_portfolio_history(current_user, db, days)
 
 
 @router.get("/stocks/{symbol}", response_model=StockResponse)
 async def get_stock_price(symbol: str) -> StockResponse:
-    """
-    Get the current price of a stock by symbol.
-    args:
-        - symbol: The stock symbol to fetch
-    return: A StockResponse model containing the stock symbol and its current price
-    """
     try:
-        ticker = yf.Ticker(symbol)
-        data = ticker.history(period="1mo")
-        if data.empty:
-            raise HTTPException(status_code=404, detail="Stock symbol not found")
-        latest_price = float(round(data["Close"].iloc[-1], 3))
-        return StockResponse(symbol=symbol, price=latest_price)
+        stock_data = await get_stock_data(symbol)
+        return StockResponse(symbol=symbol, price=stock_data["price"])
     except Exception as e:
         logger.error(f"Error fetching data for {symbol}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error fetching stock data")
@@ -217,12 +134,12 @@ async def get_stock_price(symbol: str) -> StockResponse:
 @router.get("/portfolio/analysis", response_model=dict)
 async def get_portfolio_analysis(
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+) -> dict:
     portfolio_analysis = {}
-    user_portfolio = get_user_portfolio(current_user, db)
+    user_portfolio = await get_user_portfolio(current_user, db)
 
     for stock in user_portfolio.portfolio:
-        analysis = await get_stock_analysis(
+        analysis = await analyze_stock(
             stock.symbol, stock.quantity, stock.purchase_price
         )
         portfolio_analysis[stock.symbol] = analysis
@@ -230,51 +147,22 @@ async def get_portfolio_analysis(
     return portfolio_analysis
 
 
+@router.get("/stocks/{symbol}", response_model=StockResponse)
+async def get_stock_price(symbol: str) -> StockResponse:
+    try:
+        stock_data = await get_stock_data(symbol)
+        return StockResponse(symbol=symbol, price=stock_data["price"])
+    except Exception as e:
+        logger.error(f"Error fetching data for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error fetching stock data")
+
 
 async def get_stock_analysis(
     symbol: str, quantity: float, purchase_price: float
 ) -> StockAnalysisResponse:
     try:
-        ticker = yf.Ticker(symbol)
-        data = ticker.history(period="1y")
-
-        if data.empty:
-            raise HTTPException(status_code=404, detail="Stock symbol not found")
-
-        data = data.reset_index()
-
-        data["Returns"] = data["Close"].pct_change()
-        data["Cumulative Returns"] = (1 + data["Returns"]).cumprod()
-
-        initial_investment = quantity * purchase_price
-        data["Portfolio Value"] = data["Cumulative Returns"] * initial_investment
-
-        dividends_data = ticker.dividends.reset_index()
-        if dividends_data.empty:
-            dividends = []
-        else:
-            dividends = dividends_data.to_dict(orient="records")
-
-        volatility = data["Returns"].std() * 252**0.5
-
-        response_data = StockAnalysisResponse(
-            historical_data=data.to_dict(orient="records"),
-            portfolio_value=data[["Date", "Portfolio Value"]].to_dict(orient="records"),
-            volatility=volatility,
-            profit_over_time=data[["Date", "Cumulative Returns"]].to_dict(
-                orient="records"
-            ),
-            investment_value_over_time=data[["Date", "Close"]].to_dict(
-                orient="records"
-            ),
-            asset_value_over_time=data[["Date", "Portfolio Value"]].to_dict(
-                orient="records"
-            ),
-            dividends=dividends,
-        )
-
-        return response_data
-
+        analysis = await analyze_stock(symbol, quantity, purchase_price)
+        return analysis
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error fetching stock analysis data: {str(e)}"
