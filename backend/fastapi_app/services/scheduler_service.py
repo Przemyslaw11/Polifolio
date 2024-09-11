@@ -3,7 +3,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from apscheduler.triggers.interval import IntervalTrigger
 
-from services.stock_service import update_stock_prices, update_portfolio_history
+from services.portfolio_service import update_portfolio_history
+from services.stock_service import update_stock_prices
 from shared.logging_config import setup_logging
 
 logger = setup_logging()
