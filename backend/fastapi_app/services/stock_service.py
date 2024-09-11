@@ -51,7 +51,8 @@ class StockService:
             logger.error(f"Error fetching price for {symbol}: {str(e)}")
         return None
 
-    async def _save_stock_price(self, symbol: str, price: float) -> None:
+    @staticmethod
+    async def _save_stock_price(symbol: str, price: float) -> None:
         async with AsyncSessionLocal() as db:
             try:
                 stmt = select(StockPrice).filter(StockPrice.symbol == symbol)
@@ -72,106 +73,185 @@ class StockService:
                 logger.error(f"Error saving stock price for {symbol}: {str(e)}")
                 await db.rollback()
 
+    async def update_stock_prices(self):
+        logger.info("Starting stock price update")
+        async with AsyncSessionLocal() as db:
+            try:
+                stocks = await self.get_unique_stocks(db)
+                logger.info(f"Found {len(stocks)} unique stocks to update")
+                await asyncio.gather(
+                    *[
+                        self.update_stock_price(Stock(symbol=symbol))
+                        for symbol in stocks
+                    ]
+                )
+                logger.info("Stock price update completed successfully")
+            except Exception as e:
+                logger.error(f"Error during stock price update: {str(e)}")
 
-async def update_stock_prices():
-    logger.info("Starting stock price update")
-    stock_service = StockService()
-    async with AsyncSessionLocal() as db:
+    @staticmethod
+    async def get_unique_stocks(db: AsyncSession) -> List[str]:
+        stmt = select(Stock.symbol).distinct()
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_stock_data(symbol: str) -> Dict[str, Any]:
         try:
-            stmt = select(Stock.symbol).distinct()
-            result = await db.execute(stmt)
-            stocks = result.scalars().all()
-            logger.info(f"Found {len(stocks)} unique stocks to update")
-            await asyncio.gather(
-                *[
-                    stock_service.update_stock_price(Stock(symbol=symbol))
-                    for symbol in stocks
-                ]
-            )
-            logger.info("Stock price update completed successfully")
+            ticker = yf.Ticker(symbol)
+            data = await asyncio.to_thread(ticker.history, period="1mo")
+            if data.empty:
+                raise HTTPException(status_code=404, detail="Stock symbol not found")
+            latest_price = float(round(data["Close"].iloc[-1], 3))
+            return {"symbol": symbol, "price": latest_price}
         except Exception as e:
-            logger.error(f"Error during stock price update: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error fetching stock data: {str(e)}"
+            )
 
+    @staticmethod
+    async def analyze_stock(
+        symbol: str, quantity: float, purchase_price: float
+    ) -> StockAnalysisResponse:
+        try:
+            ticker = yf.Ticker(symbol)
+            data = await asyncio.to_thread(ticker.history, period="1y")
 
-async def get_stock_data(symbol: str) -> Dict[str, Any]:
-    try:
+            if data.empty:
+                raise HTTPException(status_code=404, detail="Stock symbol not found")
+
+            data = data.reset_index()
+
+            data["Returns"] = data["Close"].pct_change()
+            data["Cumulative Returns"] = (1 + data["Returns"]).cumprod()
+
+            initial_investment = quantity * purchase_price
+            data["Portfolio Value"] = data["Cumulative Returns"] * initial_investment
+
+            dividends_data = ticker.dividends.reset_index()
+            dividends = (
+                dividends_data.to_dict(orient="records")
+                if not dividends_data.empty
+                else []
+            )
+
+            volatility = data["Returns"].std() * 252**0.5
+
+            return StockAnalysisResponse(
+                historical_data=data.to_dict(orient="records"),
+                portfolio_value=data[["Date", "Portfolio Value"]].to_dict(
+                    orient="records"
+                ),
+                volatility=volatility,
+                profit_over_time=data[["Date", "Cumulative Returns"]].to_dict(
+                    orient="records"
+                ),
+                investment_value_over_time=data[["Date", "Close"]].to_dict(
+                    orient="records"
+                ),
+                asset_value_over_time=data[["Date", "Portfolio Value"]].to_dict(
+                    orient="records"
+                ),
+                dividends=dividends,
+            )
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error fetching stock analysis data: {str(e)}"
+            )
+
+    @staticmethod
+    async def get_user_with_stocks(user_id: int, db: AsyncSession):
+        stmt = select(User).options(joinedload(User.stocks)).filter(User.id == user_id)
+        result = await db.execute(stmt)
+        return result.scalars().unique().one_or_none()
+
+    @staticmethod
+    async def get_latest_stock_prices(stock_symbols: List[str], db: AsyncSession):
+        subquery = (
+            select(
+                StockPrice.symbol, func.max(StockPrice.timestamp).label("max_timestamp")
+            )
+            .filter(StockPrice.symbol.in_(stock_symbols))
+            .group_by(StockPrice.symbol)
+            .subquery()
+        )
+
+        stmt = select(StockPrice).join(
+            subquery,
+            (StockPrice.symbol == subquery.c.symbol)
+            & (StockPrice.timestamp == subquery.c.max_timestamp),
+        )
+        result = await db.execute(stmt)
+        return {row.symbol: row.price for row in result.scalars().all()}
+
+    async def get_user_portfolio_items(self, user_id: int, db: AsyncSession):
+        stmt = (
+            select(Stock, StockPrice)
+            .outerjoin(StockPrice, Stock.symbol == StockPrice.symbol)
+            .filter(Stock.user_id == user_id)
+        )
+        result = await db.execute(stmt)
+        return result.all()
+
+    @staticmethod
+    async def calculate_total_dividends(user: User) -> float:
+        total_dividends = 0
+        for stock in user.stocks:
+            try:
+                ticker = yf.Ticker(stock.symbol)
+                dividends = await asyncio.to_thread(lambda: ticker.dividends)
+                if not dividends.empty:
+                    total_dividends += dividends.sum() * stock.quantity
+                else:
+                    logger.info(f"No dividend data available for {stock.symbol}")
+            except Exception as e:
+                logger.error(
+                    f"Error fetching dividend data for {stock.symbol}: {str(e)}"
+                )
+        return total_dividends
+
+    async def calculate_portfolio_volatility(
+        self, portfolio_items: List[tuple]
+    ) -> float:
+        if not portfolio_items:
+            logger.warning("No portfolio items provided for volatility calculation")
+            return 0.0
+
+        total_value = sum(
+            (item[0].quantity * item[1].price)
+            for item in portfolio_items
+            if item[1] is not None
+        )
+        if total_value == 0:
+            logger.warning("Total portfolio value is zero")
+            return 0.0
+
+        weighted_volatilities = []
+
+        for stock, price_entry in portfolio_items:
+            if price_entry is None:
+                logger.warning(f"No price data available for {stock.symbol}")
+                continue
+
+            try:
+                volatility = await self._calculate_stock_volatility(stock.symbol)
+                weight = (stock.quantity * price_entry.price) / total_value
+                weighted_volatilities.append(weight * volatility)
+            except Exception as e:
+                logger.error(
+                    f"Error calculating volatility for {stock.symbol}: {str(e)}"
+                )
+
+        return sum(weighted_volatilities) if weighted_volatilities else 0.0
+
+    @staticmethod
+    async def _calculate_stock_volatility(symbol: str) -> float:
         ticker = yf.Ticker(symbol)
-        data = await asyncio.to_thread(ticker.history, period="1mo")
-        if data.empty:
-            raise HTTPException(status_code=404, detail="Stock symbol not found")
-        latest_price = float(round(data["Close"].iloc[-1], 3))
-        return {"symbol": symbol, "price": latest_price}
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error fetching stock data: {str(e)}"
-        )
+        stock_data = await asyncio.to_thread(lambda: ticker.history(period="1y"))
+        if stock_data.empty:
+            logger.warning(f"No historical data available for {symbol}")
+            return 0.0
 
-
-async def analyze_stock(
-    symbol: str, quantity: float, purchase_price: float
-) -> StockAnalysisResponse:
-    try:
-        ticker = yf.Ticker(symbol)
-        data = await asyncio.to_thread(ticker.history, period="1y")
-
-        if data.empty:
-            raise HTTPException(status_code=404, detail="Stock symbol not found")
-
-        data = data.reset_index()
-
-        data["Returns"] = data["Close"].pct_change()
-        data["Cumulative Returns"] = (1 + data["Returns"]).cumprod()
-
-        initial_investment = quantity * purchase_price
-        data["Portfolio Value"] = data["Cumulative Returns"] * initial_investment
-
-        dividends_data = ticker.dividends.reset_index()
-        dividends = (
-            dividends_data.to_dict(orient="records") if not dividends_data.empty else []
-        )
-
-        volatility = data["Returns"].std() * 252**0.5
-
-        return StockAnalysisResponse(
-            historical_data=data.to_dict(orient="records"),
-            portfolio_value=data[["Date", "Portfolio Value"]].to_dict(orient="records"),
-            volatility=volatility,
-            profit_over_time=data[["Date", "Cumulative Returns"]].to_dict(
-                orient="records"
-            ),
-            investment_value_over_time=data[["Date", "Close"]].to_dict(
-                orient="records"
-            ),
-            asset_value_over_time=data[["Date", "Portfolio Value"]].to_dict(
-                orient="records"
-            ),
-            dividends=dividends,
-        )
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Error fetching stock analysis data: {str(e)}"
-        )
-
-
-async def get_user_with_stocks(user_id: int, db: AsyncSession):
-    stmt = select(User).options(joinedload(User.stocks)).filter(User.id == user_id)
-    result = await db.execute(stmt)
-    return result.scalars().unique().one_or_none()
-
-
-async def get_latest_stock_prices(stock_symbols: List[str], db: AsyncSession):
-    subquery = (
-        select(StockPrice.symbol, func.max(StockPrice.timestamp).label("max_timestamp"))
-        .filter(StockPrice.symbol.in_(stock_symbols))
-        .group_by(StockPrice.symbol)
-        .subquery()
-    )
-
-    stmt = select(StockPrice).join(
-        subquery,
-        (StockPrice.symbol == subquery.c.symbol)
-        & (StockPrice.timestamp == subquery.c.max_timestamp),
-    )
-    result = await db.execute(stmt)
-    return {row.symbol: row.price for row in result.scalars().all()}
+        returns = stock_data["Close"].pct_change().dropna()
+        return returns.std() * (252**0.5)
