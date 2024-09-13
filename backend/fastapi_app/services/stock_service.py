@@ -3,7 +3,7 @@ from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import selectinload
 from sqlalchemy.future import select
 from fastapi import HTTPException
 from sqlalchemy import func
@@ -75,6 +75,7 @@ class StockService:
 
     async def update_stock_prices(self):
         logger.info("Starting stock price update")
+        self.updated_symbols.clear()
         async with AsyncSessionLocal() as db:
             try:
                 stocks = await self.get_unique_stocks(db)
@@ -160,11 +161,13 @@ class StockService:
                 status_code=500, detail=f"Error fetching stock analysis data: {str(e)}"
             )
 
-    @staticmethod
-    async def get_user_with_stocks(user_id: int, db: AsyncSession):
-        stmt = select(User).options(joinedload(User.stocks)).filter(User.id == user_id)
+    async def get_user_with_stocks(self, user_id: int, db: AsyncSession) -> User:
+        stmt = (
+            select(User).options(selectinload(User.stocks)).filter(User.id == user_id)
+        )
         result = await db.execute(stmt)
-        return result.scalars().unique().one_or_none()
+        user = result.scalars().first()
+        return user
 
     @staticmethod
     async def get_latest_stock_prices(stock_symbols: List[str], db: AsyncSession):
