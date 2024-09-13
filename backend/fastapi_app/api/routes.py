@@ -21,13 +21,10 @@ from fastapi_app.schemas.portfolio import (
     PortfolioResponse,
     PortfolioHistoryResponse,
 )
-from fastapi_app.services.portfolio_service import (
-    get_portfolio_history,
-    get_user_portfolio,
-)
-from fastapi_app.services.stock_service import analyze_stock, get_stock_data
-from fastapi_app.models.user import User, Stock
+from fastapi_app.services.portfolio_service import PortfolioService
+from fastapi_app.services.stock_service import StockService
 from fastapi_app.schemas.user import UserCreate, Token
+from fastapi_app.models.user import User, Stock
 from fastapi_app.db.database import get_db
 from shared.logging_config import setup_logging
 
@@ -37,6 +34,9 @@ router = APIRouter()
 warnings.filterwarnings("ignore", category=FutureWarning)  # yfinance
 
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 15))
+
+stock_service = StockService()
+portfolio_service = PortfolioService(stock_service)
 
 
 @router.post("/users/", response_model=UserCreate)
@@ -109,7 +109,7 @@ async def get_portfolio(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PortfolioResponse:
-    return await get_user_portfolio(current_user, db)
+    return await portfolio_service.get_user_portfolio(current_user, db)
 
 
 @router.get("/portfolio/history", response_model=List[PortfolioHistoryResponse])
@@ -118,13 +118,13 @@ async def get_portfolio_history_route(
     db: AsyncSession = Depends(get_db),
     days: int = 30,
 ) -> List[PortfolioHistoryResponse]:
-    return await get_portfolio_history(current_user, db, days)
+    return await portfolio_service.get_portfolio_history(current_user, db, days)
 
 
 @router.get("/stocks/{symbol}", response_model=StockResponse)
 async def get_stock_price(symbol: str) -> StockResponse:
     try:
-        stock_data = await get_stock_data(symbol)
+        stock_data = await stock_service.get_stock_data(symbol)
         return StockResponse(symbol=symbol, price=stock_data["price"])
     except Exception as e:
         logger.error(f"Error fetching data for {symbol}: {str(e)}")
@@ -136,10 +136,10 @@ async def get_portfolio_analysis(
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> dict:
     portfolio_analysis = {}
-    user_portfolio = await get_user_portfolio(current_user, db)
+    user_portfolio = await portfolio_service.get_user_portfolio(current_user, db)
 
     for stock in user_portfolio.portfolio:
-        analysis = await analyze_stock(
+        analysis = await stock_service.analyze_stock(
             stock.symbol, stock.quantity, stock.purchase_price
         )
         portfolio_analysis[stock.symbol] = analysis
@@ -147,21 +147,11 @@ async def get_portfolio_analysis(
     return portfolio_analysis
 
 
-@router.get("/stocks/{symbol}", response_model=StockResponse)
-async def get_stock_price(symbol: str) -> StockResponse:
-    try:
-        stock_data = await get_stock_data(symbol)
-        return StockResponse(symbol=symbol, price=stock_data["price"])
-    except Exception as e:
-        logger.error(f"Error fetching data for {symbol}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error fetching stock data")
-
-
 async def get_stock_analysis(
     symbol: str, quantity: float, purchase_price: float
 ) -> StockAnalysisResponse:
     try:
-        analysis = await analyze_stock(symbol, quantity, purchase_price)
+        analysis = await stock_service.analyze_stock(symbol, quantity, purchase_price)
         return analysis
     except Exception as e:
         raise HTTPException(
