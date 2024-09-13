@@ -1,7 +1,6 @@
 from datetime import timedelta
 from typing import List
 import warnings
-import os
 
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -25,15 +24,14 @@ from fastapi_app.services.portfolio_service import PortfolioService
 from fastapi_app.services.stock_service import StockService
 from fastapi_app.schemas.user import UserCreate, Token
 from fastapi_app.models.user import User, Stock
-from fastapi_app.db.database import get_db
 from shared.logging_config import setup_logging
-
-logger = setup_logging()
-router = APIRouter()
+from fastapi_app.db.database import get_db
+from shared.config import settings
 
 warnings.filterwarnings("ignore", category=FutureWarning)  # yfinance
 
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 15))
+logger = setup_logging()
+router = APIRouter()
 
 stock_service = StockService()
 portfolio_service = PortfolioService(stock_service)
@@ -79,7 +77,7 @@ async def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )

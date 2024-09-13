@@ -4,8 +4,10 @@ import logging
 from logging.handlers import RotatingFileHandler
 import pytz
 
+from shared.config import settings
 
-def setup_logging(log_file: str = "app.log") -> logging.Logger:
+
+def setup_logging(log_file: str = settings.LOG_FILE) -> logging.Logger:
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     logging.basicConfig()
@@ -24,7 +26,7 @@ def setup_logging(log_file: str = "app.log") -> logging.Logger:
         )
 
         formatter.converter = lambda timestamp: datetime.fromtimestamp(
-            timestamp, tz=pytz.timezone("Europe/Warsaw")
+            timestamp, tz=pytz.timezone(settings.TIMEZONE)
         ).timetuple()
 
         console_handler.setFormatter(formatter)
