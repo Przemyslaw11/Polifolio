@@ -13,10 +13,9 @@ import asyncio
 from fastapi_app.models.user import User, Stock, StockPrice
 from fastapi_app.schemas.stock import StockAnalysisResponse
 from fastapi_app.db.database import AsyncSessionLocal
-from shared.logging_config import setup_logging
+from shared.config import logger
 
 scheduler = AsyncIOScheduler()
-logger = setup_logging()
 
 
 class StockService:

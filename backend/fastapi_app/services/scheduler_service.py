@@ -5,12 +5,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 from services.portfolio_service import PortfolioService
 from fastapi_app.db.database import AsyncSessionLocal
 from services.stock_service import StockService
-from shared.logging_config import setup_logging
-from shared.config import settings
+from shared.config import settings, logger
 
-logger = setup_logging()
 scheduler = AsyncIOScheduler()
-
 stock_service = StockService()
 portfolio_service = PortfolioService(stock_service)
 

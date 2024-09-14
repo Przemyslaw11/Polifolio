@@ -1,16 +1,13 @@
 from datetime import datetime
-import logging
 
 from logging.handlers import RotatingFileHandler
+import logging
 import pytz
 
-from shared.config import settings
 
-
-def setup_logging(log_file: str = settings.LOG_FILE) -> logging.Logger:
-    logger = logging.getLogger()
+def setup_logging(log_file, timezone):
+    logger = logging.getLogger("global_logger")
     logger.setLevel(logging.INFO)
-    logging.basicConfig()
     logger.propagate = False
 
     if not logger.handlers:
@@ -21,12 +18,11 @@ def setup_logging(log_file: str = settings.LOG_FILE) -> logging.Logger:
         file_handler.setLevel(logging.INFO)
 
         formatter = logging.Formatter(
-            '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "message": "%(message)s", "function": "%(funcName)s"}',
+            '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "message": "%(message)s", "function": "%(funcName)s", "source": "%(source)s"}',
             datefmt="%Y-%m-%d %H:%M:%S",
         )
-
         formatter.converter = lambda timestamp: datetime.fromtimestamp(
-            timestamp, tz=pytz.timezone(settings.TIMEZONE)
+            timestamp, tz=pytz.timezone(timezone)
         ).timetuple()
 
         console_handler.setFormatter(formatter)
@@ -35,9 +31,9 @@ def setup_logging(log_file: str = settings.LOG_FILE) -> logging.Logger:
         logger.addHandler(console_handler)
         logger.addHandler(file_handler)
 
-        sqlalchemy_logger = logging.getLogger("sqlalchemy.engine")
-        sqlalchemy_logger.setLevel(logging.INFO)
-        sqlalchemy_logger.addHandler(console_handler)
-        sqlalchemy_logger.addHandler(file_handler)
-
     return logger
+
+
+def get_logger(source):
+    logger = logging.getLogger("global_logger")
+    return logging.LoggerAdapter(logger, {"source": source})

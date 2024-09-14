@@ -5,18 +5,18 @@ from components.stock import (
     show_real_time_stock_prices_tab,
     show_analysis_tab,
 )
-from components.start import show_start_tab
 from components.portfolio import show_view_portfolio_tab
 from utils.background_manager import set_background
-from config import BACKGROUND_IMAGE_PATH, logger
+from shared.config import settings, logger
 from components.login import show_login_page
+from components.start import show_start_tab
 from api.client import APIClient
 
 
 class StreamlitApp:
     def __init__(self):
         st.set_page_config(layout="wide")
-        set_background(BACKGROUND_IMAGE_PATH)
+        set_background(settings.BACKGROUND_IMAGE_PATH)
         self.api_client = APIClient()
 
     def run(self) -> None:

@@ -24,15 +24,12 @@ from fastapi_app.services.portfolio_service import PortfolioService
 from fastapi_app.services.stock_service import StockService
 from fastapi_app.schemas.user import UserCreate, Token
 from fastapi_app.models.user import User, Stock
-from shared.logging_config import setup_logging
 from fastapi_app.db.database import get_db
-from shared.config import settings
+from shared.config import settings, logger
 
 warnings.filterwarnings("ignore", category=FutureWarning)  # yfinance
 
-logger = setup_logging()
 router = APIRouter()
-
 stock_service = StockService()
 portfolio_service = PortfolioService(stock_service)
 

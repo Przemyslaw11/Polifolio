@@ -1,11 +1,8 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from shared.logging_config import setup_logging
+from shared.config import settings, logger
 from fastapi_app.models.user import Base
-from shared.config import settings
-
-logger = setup_logging()
 
 engine = create_async_engine(settings.DATABASE_URL, echo=True)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

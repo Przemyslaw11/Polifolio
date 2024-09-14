@@ -14,10 +14,7 @@ from fastapi_app.schemas.portfolio import (
 )
 from fastapi_app.services.stock_service import StockService
 from fastapi_app.models.user import User, PortfolioHistory
-from shared.logging_config import setup_logging
-
-
-logger = setup_logging()
+from shared.config import logger
 
 
 class PortfolioService:
