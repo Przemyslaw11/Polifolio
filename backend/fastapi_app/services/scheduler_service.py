@@ -1,4 +1,3 @@
-import os
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from apscheduler.triggers.interval import IntervalTrigger
@@ -6,22 +5,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 from services.portfolio_service import PortfolioService
 from fastapi_app.db.database import AsyncSessionLocal
 from services.stock_service import StockService
-from shared.logging_config import setup_logging
+from shared.config import settings, logger
 
-logger = setup_logging()
 scheduler = AsyncIOScheduler()
-
-STOCK_PRICES_INTERVAL_UPDATES_SECONDS = int(
-    os.getenv("STOCK_PRICES_INTERVAL_UPDATES_SECONDS", 60)
-)
-PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS = int(
-    os.getenv("PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS", 3600)
-)
-
-MISFIRE_GRACE_TIME_SECONDS = (
-    STOCK_PRICES_INTERVAL_UPDATES_SECONDS + STOCK_PRICES_INTERVAL_UPDATES_SECONDS
-) // 2
-
 stock_service = StockService()
 portfolio_service = PortfolioService(stock_service)
 
@@ -47,20 +33,22 @@ def configure_scheduler():
     scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
     scheduler.add_job(
         update_stock_prices_job,
-        trigger=IntervalTrigger(seconds=STOCK_PRICES_INTERVAL_UPDATES_SECONDS),
+        trigger=IntervalTrigger(seconds=settings.STOCK_PRICES_INTERVAL_UPDATES_SECONDS),
         id="update_stock_prices",
         max_instances=1,
         coalesce=True,
-        misfire_grace_time=MISFIRE_GRACE_TIME_SECONDS,
+        misfire_grace_time=settings.MISFIRE_GRACE_TIME_SECONDS,
     )
 
     scheduler.add_job(
         update_portfolio_history_job,
-        trigger=IntervalTrigger(seconds=PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS),
+        trigger=IntervalTrigger(
+            seconds=settings.PORTFOLIO_HISTORY_UPDATE_INTERVAL_SECONDS
+        ),
         id="update_portfolio_history",
         max_instances=1,
         coalesce=True,
-        misfire_grace_time=MISFIRE_GRACE_TIME_SECONDS,
+        misfire_grace_time=settings.MISFIRE_GRACE_TIME_SECONDS,
     )
 
     scheduler.start()

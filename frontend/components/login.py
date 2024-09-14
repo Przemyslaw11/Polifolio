@@ -1,7 +1,7 @@
 import streamlit as st
 
 from frontend.api.client import APIClient
-from frontend.config import logger
+from shared.config import logger
 
 
 def show_login_page() -> None:

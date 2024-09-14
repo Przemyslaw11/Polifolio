@@ -1,12 +1,10 @@
 from typing import List, Dict, Tuple
-from datetime import datetime
 import time
 
-import yfinance as yf
 import streamlit as st
 import pandas as pd
 
-from frontend.config import STOCK_PRICES_INTERVAL_UPDATES_SECONDS
+from shared.config import settings
 from frontend.api.client import APIClient
 
 
@@ -129,4 +127,4 @@ def show_view_portfolio_tab(api_client: APIClient) -> None:
             else:
                 st.error("Failed to fetch portfolio")
 
-        time.sleep(int(STOCK_PRICES_INTERVAL_UPDATES_SECONDS / 2))
+        time.sleep(int(settings.STOCK_PRICES_INTERVAL_UPDATES_SECONDS / 2))

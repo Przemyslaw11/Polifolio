@@ -3,7 +3,7 @@ import requests
 
 import streamlit as st
 
-from frontend.config import FASTAPI_URL, logger
+from shared.config import settings, logger
 
 
 class APIClient:
@@ -21,7 +21,7 @@ class APIClient:
         """
         try:
             response = requests.post(
-                f"{FASTAPI_URL}/token",
+                f"{settings.FASTAPI_URL}/token",
                 data={"username": username, "password": password},
             )
             logger.info(f"Login response status code: {response.status_code}")
@@ -56,7 +56,7 @@ class APIClient:
         """
         try:
             response = requests.post(
-                f"{FASTAPI_URL}/users/",
+                f"{settings.FASTAPI_URL}/users/",
                 json={"username": username, "email": email, "password": password},
             )
             if response.status_code == 200:
@@ -82,7 +82,9 @@ class APIClient:
         """
         headers = {"Authorization": f"Bearer {token}"}
         try:
-            response = requests.get(f"{FASTAPI_URL}/portfolio", headers=headers)
+            response = requests.get(
+                f"{settings.FASTAPI_URL}/portfolio", headers=headers
+            )
             logger.info(f"Portfolio response status code: {response.status_code}")
             logger.info(f"Portfolio response content: {response.text}")
             response.raise_for_status()
@@ -98,7 +100,7 @@ class APIClient:
     ) -> Optional[List[Dict[str, Any]]]:
         headers = {"Authorization": f"Bearer {token}"}
         try:
-            url = f"{FASTAPI_URL}/portfolio/history?days={days}"
+            url = f"{settings.FASTAPI_URL}/portfolio/history?days={days}"
             logger.info(f"Fetching portfolio history from URL: {url}")
             logger.info(f"Headers: {headers}")
 
@@ -134,7 +136,7 @@ class APIClient:
         """
         headers = {"Authorization": f"Bearer {token}"}
         response = requests.post(
-            f"{FASTAPI_URL}/users/{user_id}/stocks/",
+            f"{settings.FASTAPI_URL}/users/{user_id}/stocks/",
             headers=headers,
             json={
                 "symbol": symbol,
@@ -155,7 +157,7 @@ class APIClient:
         Returns:
             Optional[Dict[str, Any]]: Stock price data if successful, None otherwise.
         """
-        response = requests.get(f"{FASTAPI_URL}/stocks/{symbol}")
+        response = requests.get(f"{settings.FASTAPI_URL}/stocks/{symbol}")
         if response.status_code == 200:
             return response.json()
         return None
@@ -165,7 +167,7 @@ class APIClient:
         headers = {"Authorization": f"Bearer {token}"}
         try:
             response = requests.get(
-                f"{FASTAPI_URL}/portfolio/analysis", headers=headers
+                f"{settings.FASTAPI_URL}/portfolio/analysis", headers=headers
             )
             response.raise_for_status()
             return response
