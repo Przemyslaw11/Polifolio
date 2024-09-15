@@ -1,4 +1,5 @@
-version: '3'
+version: '3.8'
+
 services:
   fastapi_app:
     build:
@@ -9,19 +10,20 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 5
     volumes:
       - ./backend/fastapi_app:/app/fastapi_app
-      -  ./shared:/app/shared
+      - ./shared:/app/shared
       - ./.env:/app/.env
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB:-polifolio}
+    restart: unless-stopped
 
   streamlit_app:
     build:
@@ -30,19 +32,21 @@ services:
     ports:
       - "8502:8502"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8502"]
+      test: ["CMD", "curl", "-f", "http://localhost:8502/_stcore/health"]
       interval: 30s
       timeout: 10s
       retries: 5
     volumes:
       - ./frontend:/app/frontend
-      -  ./shared:/app/shared
+      - ./shared:/app/shared
       - ./.env:/app/.env
     depends_on:
       - fastapi_app
-
+    restart: always
+    command: ["streamlit", "run", "frontend/main.py", "--server.port=8502", "--server.address=0.0.0.0"]
+    
   db:
-    image: postgres:13
+    image: postgres:13-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-polifolio}
       POSTGRES_USER: ${POSTGRES_USER:-user}
@@ -56,6 +60,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
 volumes:
   postgres_data:
