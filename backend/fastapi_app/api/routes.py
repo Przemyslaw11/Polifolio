@@ -21,10 +21,10 @@ from fastapi_app.schemas.portfolio import (
     PortfolioHistoryResponse,
 )
 from fastapi_app.services.portfolio_service import PortfolioService
+from fastapi_app.db.database import get_db, check_db_connection
 from fastapi_app.services.stock_service import StockService
 from fastapi_app.schemas.user import UserCreate, Token
 from fastapi_app.models.user import User, Stock
-from fastapi_app.db.database import get_db
 from shared.config import settings, logger
 
 warnings.filterwarnings("ignore", category=FutureWarning)  # yfinance
@@ -32,6 +32,15 @@ warnings.filterwarnings("ignore", category=FutureWarning)  # yfinance
 router = APIRouter()
 stock_service = StockService()
 portfolio_service = PortfolioService(stock_service)
+
+
+@router.get("/health")
+async def health_check():
+    db_health = await check_db_connection()
+    return {
+        "status": "healthy" if db_health else "unhealthy",
+        "database": "connected" if db_health else "disconnected",
+    }
 
 
 @router.post("/users/", response_model=UserCreate)

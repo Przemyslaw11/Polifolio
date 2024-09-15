@@ -1,4 +1,5 @@
 from typing import ClassVar
+import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from fastapi.security import OAuth2PasswordBearer
@@ -37,7 +38,7 @@ class Settings(BaseSettings):
     MISFIRE_GRACE_TIME_SECONDS: int = 0
 
     # Helpful
-    LOG_FILE: str
+    LOG_FILE: str = os.path.join("logs", "app.log")
     TIMEZONE: str
 
     # Logging

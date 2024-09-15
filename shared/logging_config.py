@@ -1,4 +1,5 @@
 from datetime import datetime
+import os
 
 from logging.handlers import RotatingFileHandler
 import logging
@@ -6,6 +7,10 @@ import pytz
 
 
 def setup_logging(log_file, timezone):
+    log_dir = os.path.dirname(log_file)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
     logger = logging.getLogger("global_logger")
     logger.setLevel(logging.INFO)
     logger.propagate = False
